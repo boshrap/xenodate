@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:xenodate/swipe.dart';
 import 'package:xenodate/matches.dart';
 import 'package:xenodate/filter.dart';
+import 'package:xenodate/models/profile.dart'; // Import your Profile model
+import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
+
 
 enum Selector { filter, swipe, matches }
 
@@ -24,6 +27,10 @@ class _NavButtonsState extends State<NavButtons> {
         widget.selectorNotifier.value == Selector.matches,
       ],
       onPressed: (int index) {
+        // No need to call setState here if the parent (MainView)
+        // is already listening to selectorNotifier and rebuilding.
+        // However, keeping setState here ensures ToggleButtons visually updates
+        // immediately if there were any reason MainView didn't rebuild fast enough.
         setState(() {
           widget.selectorNotifier.value = Selector.values[index];
         });
@@ -73,30 +80,118 @@ class MainView extends StatefulWidget {
 class _MainViewState extends State<MainView> {
   ValueNotifier<Selector> selectorNotifier = ValueNotifier<Selector>(Selector.swipe);
 
+  // --- New State Variables ---
+  final ValueNotifier<List<Profile>> _allProfilesNotifier = ValueNotifier<List<Profile>>([]);
+  final ValueNotifier<List<Profile>> _filteredProfilesNotifier = ValueNotifier<List<Profile>>([]);
+  final ValueNotifier<FilterCriteria> _filterCriteriaNotifier = ValueNotifier<FilterCriteria>(FilterCriteria.empty());
+  // --- End New State Variables ---
+
+  // Instantiate the view widgets here to keep their state
+  // Pass the necessary notifiers to them
+  late final Filter _filterView;
+  late final Swipe _swipeView;
+  late final XenoMatches _xenoMatchesView; // Assuming this might also use filtered profiles
+
   @override
   void initState() {
     super.initState();
-    selectorNotifier.addListener(_updateView);
+    selectorNotifier.addListener(_onSelectorChanged);
+
+    // --- Initialize Views and Load Data ---
+    _filterView = Filter(
+      filterCriteriaNotifier: _filterCriteriaNotifier,
+      onApplyFilters: _applyFilters, // Callback to apply filters
+    );
+    _swipeView = Swipe(profilesNotifier: _filteredProfilesNotifier); // Swipe view now takes filtered profiles
+    _xenoMatchesView = XenoMatches(/* potentially pass profiles here too */);
+
+    _loadProfiles(); // Load initial profiles
+    _filterCriteriaNotifier.addListener(_onFilterCriteriaChanged); // Listen for filter changes
+    // --- End Initialization ---
+  }
+
+  void _onSelectorChanged() {
+    setState(() {});
   }
 
   @override
   void dispose() {
-    selectorNotifier.removeListener(_updateView);
+    selectorNotifier.removeListener(_onSelectorChanged);
     selectorNotifier.dispose();
+    _allProfilesNotifier.dispose();
+    _filteredProfilesNotifier.dispose();
+    _filterCriteriaNotifier.removeListener(_onFilterCriteriaChanged);
+    _filterCriteriaNotifier.dispose();
     super.dispose();
   }
 
-  void _updateView() {
-    setState(() {});
+  // --- New Methods ---
+  Future<void> _loadProfiles() async {
+    // **TODO: Replace this with your actual data fetching logic (e.g., from Firestore)**
+    // Example with in-memory data:
+    await Future.delayed(Duration(seconds: 1)); // Simulate network delay
+    final mockProfiles = [
+      Profile(id: '1', name: 'Zorg', age: 350, gender: 'Male', interests: ['Conquering galaxies', 'Tea'], imageUrl: 'assets/profiles/zorg.png', bio: 'Seeking adventurous partner for universal domination.'),
+      Profile(id: '2', name: 'Leela', age: 28, gender: 'Female', interests: ['Space pilot', 'Martial arts'], imageUrl: 'assets/profiles/leela.png', bio: 'One-eyed cyclops with a heart of gold (and a laser pistol).'),
+      Profile(id: '3', name: 'Gleepglorp', age: 120, gender: 'Non-binary', interests: ['Quantum physics', 'Knitting nebulae'], imageUrl: 'assets/profiles/gleepglorp.png', bio: 'Just a blob looking for another blob.'),
+      Profile(id: '4', name: 'Captain Starbeam', age: 42, gender: 'Male', interests: ['Heroism', 'Justice', 'Shiny boots'], imageUrl: 'assets/profiles/starbeam.png', bio: 'Saving the universe, one daring rescue at a time.'),
+      Profile(id: '5', name: 'Nova', age: 22, gender: 'Female', interests: ['Astronomy', 'Ancient languages', 'Exploring ruins'], imageUrl: 'assets/profiles/nova.png', bio: 'Curious explorer charting unknown territories.'),
+    ];
+    _allProfilesNotifier.value = mockProfiles;
+    _applyFilters(_filterCriteriaNotifier.value); // Apply initial (empty) filter
+  }
+
+  void _onFilterCriteriaChanged() {
+    // This is called when FilterCriteria changes from the Filter view
+    _applyFilters(_filterCriteriaNotifier.value);
+  }
+
+  void _applyFilters(FilterCriteria criteria) {
+    if (!criteria.isNotEmpty) {
+      _filteredProfilesNotifier.value = List.from(_allProfilesNotifier.value); // Show all if no filter
+    } else {
+      _filteredProfilesNotifier.value = _allProfilesNotifier.value
+          .where((profile) => criteria.matches(profile))
+          .toList();
+    }
+    // Optionally, if the swipe view should reset or react immediately:
+    // If selectorNotifier.value is Selector.swipe, you might want to rebuild
+    // or tell the Swipe widget to update. Since Swipe is listening to
+    // _filteredProfilesNotifier, it should rebuild automatically.
+  }
+  // --- End New Methods ---
+
+
+  int _getSelectedIndex() {
+    // Map the enum value to the integer index for IndexedStack
+    // The order here MUST match the order of children in IndexedStack
+    // and ideally the order of buttons in NavButtons and Selector enum.
+    switch (selectorNotifier.value) {
+      case Selector.filter:
+        return 0;
+      case Selector.swipe:
+        return 1;
+      case Selector.matches:
+        return 2;
+      default:
+      // Should not happen if your enum and logic are aligned
+        return 1; // Default to swipe
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: Image.network(
-          'logo/Xenodate-logo.png', // Replace with your logo URL
+        leading: Image.asset( // Assuming logo is in assets
+          'assets/logo/Xenodate-logo.png', // Corrected path, ensure this is in pubspec.yaml
+          // width: 100, // Optional: Adjust size
+          // height: 40,  // Optional: Adjust size
+          errorBuilder: (context, error, stackTrace) {
+            return Icon(Icons.error); // Placeholder if image fails to load
+          },
         ),
+        title: Text("Xenodate"), // Added a title for context
         actions: [
           Builder(
               builder: (BuildContext context) {
@@ -111,50 +206,60 @@ class _MainViewState extends State<MainView> {
         ],
       ),
       drawer: Drawer(
-       child: ListView(
-         padding: EdgeInsets.zero,
-         children: [
-           ListTile(
-             title: const Text('Xenodate'),
-             onTap: () {} ,
-           ),
-           ListTile(
-             title: Text('Characters'),
-             onTap: () {} ,
-           ),
-           ListTile(
-             title: Text('Settings'),
-             onTap: () {} ,
-           ),
-           ListTile(
-             title: Text('Cash Shop (Coming Soon!)'),
-             onTap: () {},
-           ),
-         ],
-       ),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader( // Using DrawerHeader for better styling
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+              ),
+              child: Text(
+                'Xenodate Menu',
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.person_search), // Example Icon
+              title: const Text('Characters'),
+              onTap: () {
+                // Navigator.pop(context); // Close drawer
+                // Handle navigation or action
+              } ,
+            ),
+            ListTile(
+              leading: Icon(Icons.settings), // Example Icon
+              title: Text('Settings'),
+              onTap: () {
+                // Navigator.pop(context);
+              } ,
+            ),
+            ListTile(
+              leading: Icon(Icons.shopping_cart), // Example Icon
+              title: Text('Cash Shop (Coming Soon!)'),
+              onTap: () {
+                // Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
       ),
       body: Column(
         children: [
           NavButtons(selectorNotifier: selectorNotifier),
           Expanded(
-            child: _buildView(),
+            // Use IndexedStack to preserve the state of the children
+            child: IndexedStack(
+              index: _getSelectedIndex(),
+              children: <Widget>[
+                _filterView,    // Index 0
+                _swipeView,     // Index 1
+                _xenoMatchesView, // Index 2
+              ],
+            ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _buildView() {
-    switch (selectorNotifier.value) {
-      case Selector.filter:
-        return Filter();
-      case Selector.swipe:
-        return Swipe();
-      case Selector.matches:
-        return XenoMatches();
-      default:
-        return Swipe();
-    }
   }
 }
 
@@ -166,6 +271,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Xenodate', // Added app title
+      theme: ThemeData( // Optional: Basic theming
+        primarySwatch: Colors.deepPurple,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
       home: MainView(),
     );
   }
