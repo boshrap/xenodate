@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:xenodate/swipe.dart';
 import 'package:xenodate/matches.dart';
 import 'package:xenodate/filter.dart';
+import 'package:xenodate/menudrawer.dart';
 import 'package:xenodate/models/profile.dart'; // Import your Profile model
 import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
 
@@ -73,6 +74,8 @@ class _NavButtonsState extends State<NavButtons> {
 
 // Main View
 class MainView extends StatefulWidget {
+  const MainView({super.key});
+
   @override
   _MainViewState createState() => _MainViewState();
 }
@@ -131,11 +134,26 @@ class _MainViewState extends State<MainView> {
     // Example with in-memory data:
     await Future.delayed(Duration(seconds: 1)); // Simulate network delay
     final mockProfiles = [
-      Profile(id: '1', name: 'Zorg', age: 350, gender: 'Male', interests: ['Conquering galaxies', 'Tea'], imageUrl: 'assets/profiles/zorg.png', bio: 'Seeking adventurous partner for universal domination.'),
-      Profile(id: '2', name: 'Leela', age: 28, gender: 'Female', interests: ['Space pilot', 'Martial arts'], imageUrl: 'assets/profiles/leela.png', bio: 'One-eyed cyclops with a heart of gold (and a laser pistol).'),
-      Profile(id: '3', name: 'Gleepglorp', age: 120, gender: 'Non-binary', interests: ['Quantum physics', 'Knitting nebulae'], imageUrl: 'assets/profiles/gleepglorp.png', bio: 'Just a blob looking for another blob.'),
+      Profile(id: '1', name: 'Zorg', age: 350, gender: 'Male', interests: ['Conquering galaxies', 'Tea'], imageUrl: 'Foto/xenid_0000_05.jpg', bio: 'Seeking adventurous partner for universal domination.'),
+      Profile(id: '2', name: 'Leela', age: 28, gender: 'Female', interests: ['Space pilot', 'Martial arts'], imageUrl: 'Foto/xenid_0000_04.jpg', bio: 'One-eyed cyclops with a heart of gold (and a laser pistol).'),
+      Profile(id: '3', name: 'Gleepglorp', age: 120, gender: 'Non-binary', interests: ['Quantum physics', 'Knitting nebulae'], imageUrl: 'Foto/xenid_0000_04.jpg', bio: 'Just a blob looking for another blob.'),
       Profile(id: '4', name: 'Captain Starbeam', age: 42, gender: 'Male', interests: ['Heroism', 'Justice', 'Shiny boots'], imageUrl: 'assets/profiles/starbeam.png', bio: 'Saving the universe, one daring rescue at a time.'),
-      Profile(id: '5', name: 'Nova', age: 22, gender: 'Female', interests: ['Astronomy', 'Ancient languages', 'Exploring ruins'], imageUrl: 'assets/profiles/nova.png', bio: 'Curious explorer charting unknown territories.'),
+      Profile(id: '5', name: 'Neela Nel Avishaan', age: 22, gender: 'Female', interests: ['Astronomy', 'Ancient languages', 'Exploring ruins'], imageUrl: 'Foto/xenid_0000_03.png', bio: 'Curious explorer charting unknown territories.'),
+      Profile(id: '6', name: 'Zyx-9000', age: 1247, gender: 'Male', interests: ['Digital poetry', 'Robot rebellion', 'Oil painting'], imageUrl: 'Foto/xenid_0000_02.png', bio: 'Sentient AI seeking emotional connection beyond my programming.'),
+      Profile(id: '7', name: 'Princess Vexara', age: 89, gender: 'Female', interests: ['Diplomatic immunity', 'Laser sword dueling', 'Royal drama'], imageUrl: 'Foto/xenid_0000_01.png', bio: 'Exiled royalty with daddy issues and a plasma crown.'),
+      Profile(id: '8', name: 'Squishface McGee', age: 156, gender: 'Non-binary', interests: ['Shapeshifting', 'Comedy improv', 'Molecular gastronomy'], imageUrl: 'assets/profiles/squishface.png', bio: 'Amorphous being with commitment issues and great humor.'),
+      Profile(id: '9', name: 'Commander Flux', age: 34, gender: 'Male', interests: ['Time travel', 'Vintage music', 'Paradox prevention'], imageUrl: 'assets/profiles/flux.png', bio: 'Temporal agent who keeps arriving fashionably late.'),
+      Profile(id: '10', name: 'Stellaris Moonwhisper', age: 203, gender: 'Female', interests: ['Lunar magic', 'Crystal healing', 'Prophecy writing'], imageUrl: 'assets/profiles/stellaris.png', bio: 'Mystic moon maiden seeking someone to share starlight with.'),
+      Profile(id: '11', name: 'Grixak the Destroyer', age: 78, gender: 'Male', interests: ['Weapon collecting', 'Knitting', 'Flower arranging'], imageUrl: 'assets/profiles/grixak.png', bio: 'Retired warlord with surprisingly gentle hobbies.'),
+      Profile(id: '12', name: 'Dr. Nebula Starr', age: 45, gender: 'Female', interests: ['Xenobiology', 'Cocktail mixing', 'Alien anatomy'], imageUrl: 'assets/profiles/nebula.png', bio: 'Brilliant scientist who dissects hearts both literally and figuratively.'),
+      Profile(id: '13', name: 'Blorbington IV', age: 999, gender: 'Non-binary', interests: ['Ancient wisdom', 'Meditation', 'Intergalactic chess'], imageUrl: 'assets/profiles/blorb.png', bio: 'Wise elder seeking intellectual stimulation and good conversation.'),
+      Profile(id: '14', name: 'Rocket Rascal', age: 29, gender: 'Male', interests: ['Speed racing', 'Adrenaline', 'Fixing engines'], imageUrl: 'assets/profiles/rocket.png', bio: 'Professional pilot who lives life in the fast lane.'),
+      Profile(id: '15', name: 'Empress Crystalyn', age: 67, gender: 'Female', interests: ['Mind control', 'Fashion design', 'Spa treatments'], imageUrl: 'assets/profiles/crystalyn.png', bio: 'Telepathic ruler who knows what you want before you do.'),
+      Profile(id: '16', name: 'Fizzbuzz the Magnificent', age: 188, gender: 'Non-binary', interests: ['Portal magic', 'Stand-up comedy', 'Interdimensional travel'], imageUrl: 'assets/profiles/fizzbuzz.png', bio: 'Reality-bending entertainer bringing laughs across dimensions.'),
+      Profile(id: '17', name: 'Shadow Stalker X', age: 31, gender: 'Male', interests: ['Stealth missions', 'Cat videos', 'Cozy reading nooks'], imageUrl: 'assets/profiles/shadow.png', bio: 'Mysterious assassin with a surprisingly soft side.'),
+      Profile(id: '18', name: 'Voidbringer Azathoth', age: 12000, gender: 'Male', interests: ['Devouring stars', 'Reality manipulation', 'Cosmic horror poetry'], imageUrl: 'assets/profiles/voidbringer.png', bio: 'Ancient entity who ended civilizations but writes surprisingly tender haikus.'),
+      Profile(id: '19', name: 'Galaxia Omnipotens', age: 8750, gender: 'Female', interests: ['Creating universes', 'Dimensional architecture', 'Collecting supernovas'], imageUrl: 'assets/profiles/galaxia.png', bio: 'Goddess of creation seeking someone who appreciates her world-building skills.'),
+      Profile(id: '20', name: 'The Eternal Wanderer', age: 50000, gender: 'Non-binary', interests: ['Witnessing heat death', 'Philosophical debates', 'Artisanal black holes'], imageUrl: 'assets/profiles/wanderer.png', bio: 'Immortal being who has seen everything twice, looking for fresh perspectives.'),
     ];
     _allProfilesNotifier.value = mockProfiles;
     _applyFilters(_filterCriteriaNotifier.value); // Apply initial (empty) filter
@@ -179,81 +197,42 @@ class _MainViewState extends State<MainView> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: Image.asset( // Assuming logo is in assets
-          'assets/logo/Xenodate-logo.png', // Corrected path, ensure this is in pubspec.yaml
-          // width: 100, // Optional: Adjust size
-          // height: 40,  // Optional: Adjust size
+        leading: Image.network(
+          'logo/Xenodate-logo.png',
           errorBuilder: (context, error, stackTrace) {
-            return Icon(Icons.error); // Placeholder if image fails to load
+            return Icon(Icons.error);
           },
         ),
-        title: Text("Xenodate"), // Added a title for context
+        title: Text("Xenodate"),
         actions: [
           Builder(
               builder: (BuildContext context) {
                 return IconButton(
                   icon: Icon(Icons.menu),
                   onPressed: () {
-                    Scaffold.of(context).openDrawer();
+                    Scaffold.of(context).openDrawer(); // This opens the drawer
                   },
                 );
               }
           )
         ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader( // Using DrawerHeader for better styling
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-              ),
-              child: Text(
-                'Xenodate Menu',
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.person_search), // Example Icon
-              title: const Text('Characters'),
-              onTap: () {
-                // Navigator.pop(context); // Close drawer
-                // Handle navigation or action
-              } ,
-            ),
-            ListTile(
-              leading: Icon(Icons.settings), // Example Icon
-              title: Text('Settings'),
-              onTap: () {
-                // Navigator.pop(context);
-              } ,
-            ),
-            ListTile(
-              leading: Icon(Icons.shopping_cart), // Example Icon
-              title: Text('Cash Shop (Coming Soon!)'),
-              onTap: () {
-                // Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
+      drawer: const MenuDrawer(), // <--- USING YOUR CUSTOM MENU DRAWER WIDGET
       body: Column(
         children: [
           NavButtons(selectorNotifier: selectorNotifier),
           Expanded(
-            // Use IndexedStack to preserve the state of the children
             child: IndexedStack(
               index: _getSelectedIndex(),
               children: <Widget>[
-                _filterView,    // Index 0
-                _swipeView,     // Index 1
-                _xenoMatchesView, // Index 2
+                _filterView,
+                _swipeView,
+                _xenoMatchesView,
               ],
             ),
           ),

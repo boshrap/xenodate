@@ -4,8 +4,8 @@ import 'package:xenodate/models/profile.dart'; // Assuming Profile model
 import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
 
 class Filter extends StatefulWidget {
-  final ValueNotifier<FilterCriteria> filterCriteriaNotifier; // To receive current and update
-  final Function(FilterCriteria) onApplyFilters; // Callback to MainView
+  final ValueNotifier<FilterCriteria> filterCriteriaNotifier;
+  final Function(FilterCriteria) onApplyFilters;
 
   const Filter({
     Key? key,
@@ -18,24 +18,61 @@ class Filter extends StatefulWidget {
 }
 
 class _FilterState extends State<Filter> {
-  // Local state to hold temporary filter changes before applying
   late FilterCriteria _currentFilters;
 
-  // Example available options (you might fetch these from somewhere or define them)
-  final List<String> _availableGenders = ['Any', 'Male', 'Female', 'Non-binary'];
-  final List<String> _availableInterests = ['Conquering galaxies', 'Tea', 'Space pilot', 'Martial arts', 'Quantum physics', 'Knitting nebulae', 'Heroism', 'Justice', 'Shiny boots', 'Astronomy', 'Ancient languages', 'Exploring ruins'];
-
+  // Available options
+  final List<String> _availableGenders = ['Any', 'Male', 'Female', 'Non-binary']; // Corrected 'Femal'
+  final List<String> _availableInterests = [
+    'Conquering galaxies', 'Tea', 'Space pilot', 'Martial arts', 'Quantum physics',
+    'Knitting nebulae', 'Heroism', 'Justice', 'Shiny boots', 'Astronomy',
+    'Ancient languages', 'Exploring ruins'
+  ];
+  final List<String> _availableSpecies = [
+    'Any', 'Earthian', 'Novuman', 'Farrman', 'Merkind', 'Mammalkind',
+    'Snakekind', 'Featherfolk', 'Jellykind'
+  ];
+  final List<String> _availableLocations = [
+    'Any', 'Earth', 'Moon & NECs', 'Mars & FECs', 'Keplia', 'Matobu',
+    'Kir-Tak', 'Teagardgen'
+  ];
 
   @override
   void initState() {
     super.initState();
-    // Initialize local state with the current global filters
     _currentFilters = widget.filterCriteriaNotifier.value;
   }
 
+  // Helper method to build DropdownButtonFormField to reduce repetition
+  Widget _buildDropdownFilter<T>({
+    required String label,
+    required T? currentValue,
+    required List<T> items,
+    required Function(T?) onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('$label:'),
+        DropdownButtonFormField<T>(
+          value: currentValue,
+          items: items.map((T value) {
+            return DropdownMenuItem<T>(
+              value: value,
+              child: Text(value.toString()), // Assuming T can be converted to string meaningfully
+            );
+          }).toList(),
+          onChanged: onChanged,
+          decoration: InputDecoration(border: OutlineInputBorder()),
+        ),
+        SizedBox(height: 20),
+      ],
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView( // In case filters take up space
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,11 +84,11 @@ class _FilterState extends State<Filter> {
           Text('Age Range: ${_currentFilters.minAge ?? 'Any'} - ${_currentFilters.maxAge ?? 'Any'}'),
           RangeSlider(
             values: RangeValues(
-              (_currentFilters.minAge ?? 18).toDouble(), // Default min age
-              (_currentFilters.maxAge ?? 100).toDouble(), // Default max age
+              (_currentFilters.minAge ?? 18).toDouble(),
+              (_currentFilters.maxAge ?? 100).toDouble(),
             ),
             min: 18,
-            max: 500, // Max age for aliens!
+            max: 500,
             divisions: 482,
             labels: RangeLabels(
               _currentFilters.minAge?.toString() ?? '18',
@@ -59,40 +96,61 @@ class _FilterState extends State<Filter> {
             ),
             onChanged: (RangeValues values) {
               setState(() {
-                _currentFilters = FilterCriteria(
-                  minAge: values.start.round() == 18 && values.end.round() == 500 ? null : values.start.round(), // Null if default range
+                _currentFilters = _currentFilters.copyWith(
+                  minAge: values.start.round() == 18 && values.end.round() == 500 ? null : values.start.round(),
                   maxAge: values.start.round() == 18 && values.end.round() == 500 ? null : values.end.round(),
-                  gender: _currentFilters.gender,
-                  interests: _currentFilters.interests,
+                  clearMinAge: values.start.round() == 18 && values.end.round() == 500,
+                  clearMaxAge: values.start.round() == 18 && values.end.round() == 500,
                 );
               });
             },
           ),
           SizedBox(height: 20),
 
-          // --- Gender Example ---
-          Text('Gender:'),
-          DropdownButtonFormField<String>(
-            value: _currentFilters.gender ?? 'Any',
-            items: _availableGenders.map((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value),
-              );
-            }).toList(),
+          // --- Gender Filter ---
+          _buildDropdownFilter<String>(
+            label: 'Gender',
+            currentValue: _currentFilters.gender ?? 'Any',
+            items: _availableGenders,
             onChanged: (String? newValue) {
               setState(() {
-                _currentFilters = FilterCriteria(
-                  minAge: _currentFilters.minAge,
-                  maxAge: _currentFilters.maxAge,
-                  gender: newValue == 'Any' ? null : newValue, // Null if 'Any'
-                  interests: _currentFilters.interests,
+                _currentFilters = _currentFilters.copyWith(
+                  gender: newValue == 'Any' ? null : newValue,
+                  clearGender: newValue == 'Any',
                 );
               });
             },
-            decoration: InputDecoration(border: OutlineInputBorder()),
           ),
-          SizedBox(height: 20),
+
+          // --- Species Filter ---
+          _buildDropdownFilter<String>(
+            label: 'Species',
+            currentValue: _currentFilters.species ?? 'Any',
+            items: _availableSpecies,
+            onChanged: (String? newValue) {
+              setState(() {
+                _currentFilters = _currentFilters.copyWith(
+                  species: newValue == 'Any' ? null : newValue,
+                  clearSpecies: newValue == 'Any',
+                );
+              });
+            },
+          ),
+
+          // --- Location Filter ---
+          _buildDropdownFilter<String>(
+            label: 'Location',
+            currentValue: _currentFilters.location ?? 'Any',
+            items: _availableLocations,
+            onChanged: (String? newValue) {
+              setState(() {
+                _currentFilters = _currentFilters.copyWith(
+                  location: newValue == 'Any' ? null : newValue,
+                  clearLocation: newValue == 'Any',
+                );
+              });
+            },
+          ),
 
           // --- Interests Example (Multi-select Chips) ---
           Text('Interests:'),
@@ -107,15 +165,15 @@ class _FilterState extends State<Filter> {
                   setState(() {
                     List<String> currentSelectedInterests = List.from(_currentFilters.interests ?? []);
                     if (selected) {
-                      currentSelectedInterests.add(interest);
+                      if (!currentSelectedInterests.contains(interest)) {
+                        currentSelectedInterests.add(interest);
+                      }
                     } else {
                       currentSelectedInterests.remove(interest);
                     }
-                    _currentFilters = FilterCriteria(
-                      minAge: _currentFilters.minAge,
-                      maxAge: _currentFilters.maxAge,
-                      gender: _currentFilters.gender,
+                    _currentFilters = _currentFilters.copyWith(
                       interests: currentSelectedInterests.isEmpty ? null : currentSelectedInterests,
+                      clearInterests: currentSelectedInterests.isEmpty,
                     );
                   });
                 },
@@ -128,17 +186,10 @@ class _FilterState extends State<Filter> {
           Center(
             child: ElevatedButton(
               onPressed: () {
-                // Update the global filter criteria in MainView
                 widget.onApplyFilters(_currentFilters);
-                // widget.filterCriteriaNotifier.value = _currentFilters; // Alternative
-
-                // Optional: Give feedback
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Filters applied!')),
+                  SnackBar(content: Text('Filters applied! Current: ${_currentFilters.toString()}')), // Added toString for debug
                 );
-
-                // Optional: Switch back to swipe view?
-                // Provider.of<ValueNotifier<Selector>>(context, listen: false).value = Selector.swipe;
               },
               child: Text('Apply Filters'),
             ),
@@ -148,9 +199,9 @@ class _FilterState extends State<Filter> {
             child: TextButton(
               onPressed: () {
                 setState(() {
-                  _currentFilters = FilterCriteria.empty(); // Reset local state
+                  _currentFilters = FilterCriteria.empty();
                 });
-                widget.onApplyFilters(FilterCriteria.empty()); // Apply empty filter
+                widget.onApplyFilters(FilterCriteria.empty());
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Filters cleared!')),
                 );

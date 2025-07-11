@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:xenodate/makechar.dart';
+import 'package:xenodate/newchar.dart';
 
 class UpdateAcct extends StatefulWidget {
   @override

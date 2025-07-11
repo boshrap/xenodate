@@ -6,6 +6,8 @@ class FilterCriteria {
   final int? maxAge;
   final String? gender;
   final List<String>? interests;
+  final String? species;    // New
+  final String? location;   // New
   // Add other filter options
 
   FilterCriteria({
@@ -13,7 +15,33 @@ class FilterCriteria {
     this.maxAge,
     this.gender,
     this.interests,
+    this.species,    // New
+    this.location,   // New
   });
+
+  FilterCriteria copyWith({
+    int? minAge,
+    int? maxAge,
+    String? gender,
+    List<String>? interests,
+    String? species,
+    String? location,
+    bool clearMinAge = false, // To explicitly set age to null
+    bool clearMaxAge = false,
+    bool clearGender = false,
+    bool clearInterests = false,
+    bool clearSpecies = false,
+    bool clearLocation = false,
+  }) {
+    return FilterCriteria(
+      minAge: clearMinAge ? null : minAge ?? this.minAge,
+      maxAge: clearMaxAge ? null : maxAge ?? this.maxAge,
+      gender: clearGender ? null : gender ?? this.gender,
+      interests: clearInterests ? null : interests ?? this.interests,
+      species: clearSpecies ? null : species ?? this.species,
+      location: clearLocation ? null : location ?? this.location,
+    );
+  }
 
   // Method to check if a profile matches the criteria
   bool matches(Profile profile) {

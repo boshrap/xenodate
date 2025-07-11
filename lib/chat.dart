@@ -49,10 +49,6 @@ class _XenoChatState extends State<XenoChat> {
 }
 
 
-
-
-
-
 class XenoChat001 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
