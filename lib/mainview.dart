@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:xenodate/swipe.dart';
+import 'package:xenodate/swipeview.dart';
+import 'package:xenodate/data_utils.dart';
 import 'package:xenodate/matches.dart';
-import 'package:xenodate/filter.dart';
+import 'package:xenodate/filterview.dart';
 import 'package:xenodate/menudrawer.dart';
-import 'package:xenodate/models/profile.dart'; // Import your Profile model
-import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
+import 'package:xenodate/models/xenoprofile.dart'; // Import your Profile model
+import 'package:xenodate/models/filter.dart';    // Import your FilterCriteria model
 
 
 enum Selector { filter, swipe, matches }
@@ -28,10 +29,6 @@ class _NavButtonsState extends State<NavButtons> {
         widget.selectorNotifier.value == Selector.matches,
       ],
       onPressed: (int index) {
-        // No need to call setState here if the parent (MainView)
-        // is already listening to selectorNotifier and rebuilding.
-        // However, keeping setState here ensures ToggleButtons visually updates
-        // immediately if there were any reason MainView didn't rebuild fast enough.
         setState(() {
           widget.selectorNotifier.value = Selector.values[index];
         });
@@ -77,40 +74,34 @@ class MainView extends StatefulWidget {
   const MainView({super.key});
 
   @override
-  _MainViewState createState() => _MainViewState();
+  MainViewState createState() => MainViewState();
 }
 
-class _MainViewState extends State<MainView> {
+class MainViewState extends State<MainView> {
   ValueNotifier<Selector> selectorNotifier = ValueNotifier<Selector>(Selector.swipe);
 
-  // --- New State Variables ---
-  final ValueNotifier<List<Profile>> _allProfilesNotifier = ValueNotifier<List<Profile>>([]);
-  final ValueNotifier<List<Profile>> _filteredProfilesNotifier = ValueNotifier<List<Profile>>([]);
+  final ValueNotifier<List<Xenoprofile>> _allProfilesNotifier = ValueNotifier<List<Xenoprofile>>([]);
+  final ValueNotifier<List<Xenoprofile>> _filteredProfilesNotifier = ValueNotifier<List<Xenoprofile>>([]);
   final ValueNotifier<FilterCriteria> _filterCriteriaNotifier = ValueNotifier<FilterCriteria>(FilterCriteria.empty());
-  // --- End New State Variables ---
 
-  // Instantiate the view widgets here to keep their state
-  // Pass the necessary notifiers to them
   late final Filter _filterView;
-  late final Swipe _swipeView;
-  late final XenoMatches _xenoMatchesView; // Assuming this might also use filtered profiles
+  late final SwipeView _swipeView;
+  late final XenoMatches _xenoMatchesView;
 
   @override
   void initState() {
     super.initState();
     selectorNotifier.addListener(_onSelectorChanged);
 
-    // --- Initialize Views and Load Data ---
     _filterView = Filter(
       filterCriteriaNotifier: _filterCriteriaNotifier,
-      onApplyFilters: _applyFilters, // Callback to apply filters
+      onApplyFilters: _applyFilters,
     );
-    _swipeView = Swipe(profilesNotifier: _filteredProfilesNotifier); // Swipe view now takes filtered profiles
-    _xenoMatchesView = XenoMatches(/* potentially pass profiles here too */);
+    _swipeView = SwipeView(profilesNotifier: _filteredProfilesNotifier);
+    _xenoMatchesView = XenoMatches();
 
-    _loadProfiles(); // Load initial profiles
-    _filterCriteriaNotifier.addListener(_onFilterCriteriaChanged); // Listen for filter changes
-    // --- End Initialization ---
+    _fetchAndSetProfiles(); // Changed from _loadProfiles to _fetchAndSetProfiles
+    _filterCriteriaNotifier.addListener(_onFilterCriteriaChanged);
   }
 
   void _onSelectorChanged() {
@@ -128,62 +119,34 @@ class _MainViewState extends State<MainView> {
     super.dispose();
   }
 
-  // --- New Methods ---
-  Future<void> _loadProfiles() async {
-    // **TODO: Replace this with your actual data fetching logic (e.g., from Firestore)**
-    // Example with in-memory data:
-    await Future.delayed(Duration(seconds: 1)); // Simulate network delay
-    final mockProfiles = [
-      Profile(id: '1', name: 'Zorg', age: 350, gender: 'Male', interests: ['Conquering galaxies', 'Tea'], imageUrl: 'Foto/xenid_0000_05.jpg', bio: 'Seeking adventurous partner for universal domination.'),
-      Profile(id: '2', name: 'Leela', age: 28, gender: 'Female', interests: ['Space pilot', 'Martial arts'], imageUrl: 'Foto/xenid_0000_04.jpg', bio: 'One-eyed cyclops with a heart of gold (and a laser pistol).'),
-      Profile(id: '3', name: 'Gleepglorp', age: 120, gender: 'Non-binary', interests: ['Quantum physics', 'Knitting nebulae'], imageUrl: 'Foto/xenid_0000_04.jpg', bio: 'Just a blob looking for another blob.'),
-      Profile(id: '4', name: 'Captain Starbeam', age: 42, gender: 'Male', interests: ['Heroism', 'Justice', 'Shiny boots'], imageUrl: 'assets/profiles/starbeam.png', bio: 'Saving the universe, one daring rescue at a time.'),
-      Profile(id: '5', name: 'Neela Nel Avishaan', age: 22, gender: 'Female', interests: ['Astronomy', 'Ancient languages', 'Exploring ruins'], imageUrl: 'Foto/xenid_0000_03.png', bio: 'Curious explorer charting unknown territories.'),
-      Profile(id: '6', name: 'Zyx-9000', age: 1247, gender: 'Male', interests: ['Digital poetry', 'Robot rebellion', 'Oil painting'], imageUrl: 'Foto/xenid_0000_02.png', bio: 'Sentient AI seeking emotional connection beyond my programming.'),
-      Profile(id: '7', name: 'Princess Vexara', age: 89, gender: 'Female', interests: ['Diplomatic immunity', 'Laser sword dueling', 'Royal drama'], imageUrl: 'Foto/xenid_0000_01.png', bio: 'Exiled royalty with daddy issues and a plasma crown.'),
-      Profile(id: '8', name: 'Squishface McGee', age: 156, gender: 'Non-binary', interests: ['Shapeshifting', 'Comedy improv', 'Molecular gastronomy'], imageUrl: 'assets/profiles/squishface.png', bio: 'Amorphous being with commitment issues and great humor.'),
-      Profile(id: '9', name: 'Commander Flux', age: 34, gender: 'Male', interests: ['Time travel', 'Vintage music', 'Paradox prevention'], imageUrl: 'assets/profiles/flux.png', bio: 'Temporal agent who keeps arriving fashionably late.'),
-      Profile(id: '10', name: 'Stellaris Moonwhisper', age: 203, gender: 'Female', interests: ['Lunar magic', 'Crystal healing', 'Prophecy writing'], imageUrl: 'assets/profiles/stellaris.png', bio: 'Mystic moon maiden seeking someone to share starlight with.'),
-      Profile(id: '11', name: 'Grixak the Destroyer', age: 78, gender: 'Male', interests: ['Weapon collecting', 'Knitting', 'Flower arranging'], imageUrl: 'assets/profiles/grixak.png', bio: 'Retired warlord with surprisingly gentle hobbies.'),
-      Profile(id: '12', name: 'Dr. Nebula Starr', age: 45, gender: 'Female', interests: ['Xenobiology', 'Cocktail mixing', 'Alien anatomy'], imageUrl: 'assets/profiles/nebula.png', bio: 'Brilliant scientist who dissects hearts both literally and figuratively.'),
-      Profile(id: '13', name: 'Blorbington IV', age: 999, gender: 'Non-binary', interests: ['Ancient wisdom', 'Meditation', 'Intergalactic chess'], imageUrl: 'assets/profiles/blorb.png', bio: 'Wise elder seeking intellectual stimulation and good conversation.'),
-      Profile(id: '14', name: 'Rocket Rascal', age: 29, gender: 'Male', interests: ['Speed racing', 'Adrenaline', 'Fixing engines'], imageUrl: 'assets/profiles/rocket.png', bio: 'Professional pilot who lives life in the fast lane.'),
-      Profile(id: '15', name: 'Empress Crystalyn', age: 67, gender: 'Female', interests: ['Mind control', 'Fashion design', 'Spa treatments'], imageUrl: 'assets/profiles/crystalyn.png', bio: 'Telepathic ruler who knows what you want before you do.'),
-      Profile(id: '16', name: 'Fizzbuzz the Magnificent', age: 188, gender: 'Non-binary', interests: ['Portal magic', 'Stand-up comedy', 'Interdimensional travel'], imageUrl: 'assets/profiles/fizzbuzz.png', bio: 'Reality-bending entertainer bringing laughs across dimensions.'),
-      Profile(id: '17', name: 'Shadow Stalker X', age: 31, gender: 'Male', interests: ['Stealth missions', 'Cat videos', 'Cozy reading nooks'], imageUrl: 'assets/profiles/shadow.png', bio: 'Mysterious assassin with a surprisingly soft side.'),
-      Profile(id: '18', name: 'Voidbringer Azathoth', age: 12000, gender: 'Male', interests: ['Devouring stars', 'Reality manipulation', 'Cosmic horror poetry'], imageUrl: 'assets/profiles/voidbringer.png', bio: 'Ancient entity who ended civilizations but writes surprisingly tender haikus.'),
-      Profile(id: '19', name: 'Galaxia Omnipotens', age: 8750, gender: 'Female', interests: ['Creating universes', 'Dimensional architecture', 'Collecting supernovas'], imageUrl: 'assets/profiles/galaxia.png', bio: 'Goddess of creation seeking someone who appreciates her world-building skills.'),
-      Profile(id: '20', name: 'The Eternal Wanderer', age: 50000, gender: 'Non-binary', interests: ['Witnessing heat death', 'Philosophical debates', 'Artisanal black holes'], imageUrl: 'assets/profiles/wanderer.png', bio: 'Immortal being who has seen everything twice, looking for fresh perspectives.'),
-    ];
-    _allProfilesNotifier.value = mockProfiles;
+  // --- MODIFIED METHOD to load from JSON ---
+  Future<void> _fetchAndSetProfiles() async {
+    // Show a loading indicator if you want (optional)
+    // For example, you could add a ValueNotifier<bool> _isLoadingNotifier
+
+    List<Xenoprofile> loadedProfiles = await loadXenoprofiles(); // Call the JSON loading function
+    _allProfilesNotifier.value = loadedProfiles;
     _applyFilters(_filterCriteriaNotifier.value); // Apply initial (empty) filter
+
+    // Hide loading indicator (if you added one)
   }
+  // --- END MODIFIED METHOD ---
 
   void _onFilterCriteriaChanged() {
-    // This is called when FilterCriteria changes from the Filter view
     _applyFilters(_filterCriteriaNotifier.value);
   }
 
   void _applyFilters(FilterCriteria criteria) {
     if (!criteria.isNotEmpty) {
-      _filteredProfilesNotifier.value = List.from(_allProfilesNotifier.value); // Show all if no filter
+      _filteredProfilesNotifier.value = List.from(_allProfilesNotifier.value);
     } else {
       _filteredProfilesNotifier.value = _allProfilesNotifier.value
           .where((profile) => criteria.matches(profile))
           .toList();
     }
-    // Optionally, if the swipe view should reset or react immediately:
-    // If selectorNotifier.value is Selector.swipe, you might want to rebuild
-    // or tell the Swipe widget to update. Since Swipe is listening to
-    // _filteredProfilesNotifier, it should rebuild automatically.
   }
-  // --- End New Methods ---
-
 
   int _getSelectedIndex() {
-    // Map the enum value to the integer index for IndexedStack
-    // The order here MUST match the order of children in IndexedStack
-    // and ideally the order of buttons in NavButtons and Selector enum.
     switch (selectorNotifier.value) {
       case Selector.filter:
         return 0;
@@ -192,20 +155,19 @@ class _MainViewState extends State<MainView> {
       case Selector.matches:
         return 2;
       default:
-      // Should not happen if your enum and logic are aligned
-        return 1; // Default to swipe
+        return 1;
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: Image.network(
-          'logo/Xenodate-logo.png',
+          'logo/Xenodate-logo.png', // Consider adding this to your assets for offline use
           errorBuilder: (context, error, stackTrace) {
-            return Icon(Icons.error);
+            // Placeholder if logo fails to load (e.g., local asset instead)
+            return Icon(Icons.error_outline); // Or Image.asset('assets/logo/Xenodate-logo.png')
           },
         ),
         title: Text("Xenodate"),
@@ -215,14 +177,14 @@ class _MainViewState extends State<MainView> {
                 return IconButton(
                   icon: Icon(Icons.menu),
                   onPressed: () {
-                    Scaffold.of(context).openDrawer(); // This opens the drawer
+                    Scaffold.of(context).openDrawer();
                   },
                 );
               }
           )
         ],
       ),
-      drawer: const MenuDrawer(), // <--- USING YOUR CUSTOM MENU DRAWER WIDGET
+      drawer: const MenuDrawer(),
       body: Column(
         children: [
           NavButtons(selectorNotifier: selectorNotifier),
@@ -242,6 +204,7 @@ class _MainViewState extends State<MainView> {
   }
 }
 
+// Ensure MyApp and main() are still present if this is your main app file
 void main() {
   runApp(MyApp());
 }
@@ -250,12 +213,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Xenodate', // Added app title
-      theme: ThemeData( // Optional: Basic theming
+      title: 'Xenodate',
+      theme: ThemeData(
         primarySwatch: Colors.deepPurple,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: MainView(),
+      debugShowCheckedModeBanner: false, // Optional: remove debug banner
     );
   }
 }

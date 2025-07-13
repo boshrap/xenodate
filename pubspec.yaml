@@ -40,6 +40,7 @@ dependencies:
   firebase_core:
   firebase_auth:
   cloud_firestore:
+  cloud_functions: ^4.0.0 # Check for the latest version
 
 dev_dependencies:
   flutter_test:
@@ -76,6 +77,7 @@ flutter:
 assets:
   - logo/Xenodate-logo.png
   - assets/logo/Xenodate-logo.png
+  - assets/profiles/xenopersonas_DATA.json
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a
   # "family" key with the font family name, and a "fonts" key with a

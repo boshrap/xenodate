@@ -1,6 +1,8 @@
 // lib/models/character.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
+
 class Character {
   final String id;
   final String name;

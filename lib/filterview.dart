@@ -1,6 +1,6 @@
-// lib/filter.dart
+// lib/filterview.dart
 import 'package:flutter/material.dart';
-import 'package:xenodate/models/profile.dart'; // Assuming Profile model
+import 'package:xenodate/models/xenoprofile.dart'; // Assuming Profile model
 import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
 
 class Filter extends StatefulWidget {
@@ -21,7 +21,7 @@ class _FilterState extends State<Filter> {
   late FilterCriteria _currentFilters;
 
   // Available options
-  final List<String> _availableGenders = ['Any', 'Male', 'Female', 'Non-binary']; // Corrected 'Femal'
+  final List<String> _availableGenders = ['Any', 'Male', 'Female', 'Non-binary'];
   final List<String> _availableInterests = [
     'Conquering galaxies', 'Tea', 'Space pilot', 'Martial arts', 'Quantum physics',
     'Knitting nebulae', 'Heroism', 'Justice', 'Shiny boots', 'Astronomy',
@@ -32,9 +32,12 @@ class _FilterState extends State<Filter> {
     'Snakekind', 'Featherfolk', 'Jellykind'
   ];
   final List<String> _availableLocations = [
-    'Any', 'Earth', 'Moon & NECs', 'Mars & FECs', 'Keplia', 'Matobu',
-    'Kir-Tak', 'Teagardgen'
+    'Any', 'Earth', 'Moon & NECs', 'Mars & FECs', 'Keplia', 'Matobo',
+    'Kir-Tak',
   ];
+  // Add "Looking For" options
+  final List<String> _availableLookingFor = ['Any', 'Conversation', 'Friendship', 'Romance'];
+
 
   @override
   void initState() {
@@ -58,7 +61,7 @@ class _FilterState extends State<Filter> {
           items: items.map((T value) {
             return DropdownMenuItem<T>(
               value: value,
-              child: Text(value.toString()), // Assuming T can be converted to string meaningfully
+              child: Text(value.toString()),
             );
           }).toList(),
           onChanged: onChanged,
@@ -152,6 +155,21 @@ class _FilterState extends State<Filter> {
             },
           ),
 
+          // --- Looking For Filter ---
+          _buildDropdownFilter<String>(
+            label: 'Looking For',
+            currentValue: _currentFilters.lookingFor ?? 'Any', // Use the new field
+            items: _availableLookingFor,
+            onChanged: (String? newValue) {
+              setState(() {
+                _currentFilters = _currentFilters.copyWith(
+                  lookingFor: newValue == 'Any' ? null : newValue, // Update lookingFor
+                  clearLookingFor: newValue == 'Any', // Handle clearing
+                );
+              });
+            },
+          ),
+
           // --- Interests Example (Multi-select Chips) ---
           Text('Interests:'),
           Wrap(
@@ -188,7 +206,7 @@ class _FilterState extends State<Filter> {
               onPressed: () {
                 widget.onApplyFilters(_currentFilters);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Filters applied! Current: ${_currentFilters.toString()}')), // Added toString for debug
+                  SnackBar(content: Text('Filters applied! Current: ${_currentFilters.toString()}')),
                 );
               },
               child: Text('Apply Filters'),
