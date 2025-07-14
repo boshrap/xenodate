@@ -47,11 +47,19 @@ class FilterCriteria {
     // If a criterion is null or empty, it means "don't filter by this"
     // So, we only check if the criterion IS set AND the profile doesn't match.
 
-    if (minAge != null && profile.earthage < minAge!) {
-      return false;
-    }
-    if (maxAge != null && profile.earthage > maxAge!) {
-      return false;
+    if (profile.earthage == null) {
+      // If this filter has an age constraint, a profile with no age doesn't match
+      if (minAge != null || maxAge != null) {
+        return false;
+      }
+    } else {
+      // profile.earthage is not null here
+      if (minAge != null && profile.earthage! < minAge!) { // Use ! after null check
+        return false;
+      }
+      if (maxAge != null && profile.earthage! > maxAge!) { // Use ! after null check
+        return false;
+      }
     }
     if (species != null && species!.isNotEmpty && profile.species.toLowerCase() != species!.toLowerCase()) {
       return false;

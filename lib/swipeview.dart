@@ -4,160 +4,133 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle; // For loading JSON
 import 'package:xenodate/models/xenoprofile.dart';
 import 'package:xenodate/models/filter.dart';
-import 'package:xenodate/filterview.dart';
+import 'package:xenodate/filterview.dart'; // Your FilterView
 
 class SwipeView extends StatefulWidget {
-  // 1. Add the profilesNotifier parameter
-  final ValueNotifier<List<Xenoprofile>> profilesNotifier;
-  final ValueNotifier<FilterCriteria> filterCriteriaNotifier; // Keep this if filters are managed here
-  final Function(FilterCriteria) onApplyFilters; // Keep this
-
-  const SwipeView({
-    Key? key,
-    required this.profilesNotifier, // Make it required
-    required this.filterCriteriaNotifier,
-    required this.onApplyFilters,
-  }) : super(key: key);
+  const SwipeView({Key? key, required ValueNotifier<List<Xenoprofile>> profilesNotifier}) : super(key: key);
 
   @override
   _SwipeViewState createState() => _SwipeViewState();
 }
 
 class _SwipeViewState extends State<SwipeView> {
-  // 2. Remove _allProfiles and _filteredProfiles if they are now managed by profilesNotifier
-  // List<Xenoprofile> _allProfiles = [];
-  // List<Xenoprofile> _filteredProfiles = []; // This will now come from widget.profilesNotifier.value
-
-  bool _isLoading = true; // Still useful for initial load if SwipeView handles it
-  int _currentIndex = 0;
-
-  // --- Dynamic options (can remain if SwipeView still loads initial data) ---
-  List<String> _availableGenders = ['Any', 'Male', 'Female', 'Non-binary'];
-  List<String> _availableInterests = [/* ... */];
-  List<String> _availableSpecies = [/* ... */];
-  List<String> _availableLocations = [/* ... */];
-  List<String> _availableLookingFor = ['Any', 'Conversation', 'Friendship', 'Romance'];
+  List<Xenoprofile> _allProfiles = [];
+  List<Xenoprofile> _filteredProfiles = [];
+  ValueNotifier<FilterCriteria> _filterCriteriaNotifier =
+  ValueNotifier(FilterCriteria.empty());
+  bool _isLoading = true;
+  int _currentIndex = 0; // For swiping
 
   @override
   void initState() {
     super.initState();
-    // 3. Listen to the passed-in profilesNotifier
-    widget.profilesNotifier.addListener(_onProfilesChanged);
-
-    // If SwipeView is still responsible for the initial load and filtering,
-    // keep this. Otherwise, the parent widget should handle loading.
-    _loadAndFilterProfiles(); // Potentially rename or restructure this
-
-    widget.filterCriteriaNotifier.addListener(_applyFiltersToList); // Keep if filtering is here
+    _loadProfiles();
+    _filterCriteriaNotifier.addListener(_applyFiltersToList);
   }
 
   @override
   void dispose() {
-    widget.profilesNotifier.removeListener(_onProfilesChanged);
-    widget.filterCriteriaNotifier.removeListener(_applyFiltersToList);
-    // widget.filterCriteriaNotifier.dispose(); // Dispose this in the parent if passed in
+    _filterCriteriaNotifier.removeListener(_applyFiltersToList);
+    _filterCriteriaNotifier.dispose();
     super.dispose();
   }
 
-  // 4. Listener for external profile changes
-  void _onProfilesChanged() {
-    if (mounted) { // Ensure the widget is still in the tree
-      setState(() {
-        _currentIndex = 0; // Reset index when profiles change externally
-        // Potentially update _isLoading if the notifier indicates loading state
-      });
-    }
-  }
-
-  // Option A: SwipeView still loads initial data and applies filters
-  // (Potentially simpler if filter logic is tightly coupled)
-  List<Xenoprofile> _internalAllProfiles = []; // For storing the raw loaded data
-
-  Future<void> _loadAndFilterProfiles() async {
-    setState(() { _isLoading = true; });
+  Future<void> _loadProfiles() async {
+    setState(() {
+      _isLoading = true;
+    });
     try {
-      final String response = await rootBundle.loadString('assets/profiles/xenopersonas_DATA.json');
+      final String response =
+      await rootBundle.loadString('assets/profiles/xenopersonas_DATA.json');
       final List<dynamic> data = json.decode(response) as List<dynamic>;
-      _internalAllProfiles = data.map((jsonItem) => Xenoprofile.fromJson(jsonItem as Map<String, dynamic>)).toList();
-      _applyFiltersToList(); // This will update widget.profilesNotifier.value
+      _allProfiles = data.map((jsonItem) => Xenoprofile.fromJson(jsonItem as Map<String, dynamic>)).toList();
+      _applyFiltersToList(); // Apply initial (empty) filters
     } catch (e) {
       print("Error loading profiles: $e");
-      widget.profilesNotifier.value = []; // Update notifier on error
+      // Handle error, e.g., show a message to the user
     } finally {
-      if (mounted) setState(() { _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   void _applyFiltersToList() {
-    final criteria = widget.filterCriteriaNotifier.value;
-    final filtered = _internalAllProfiles.where((profile) {
-      // ... your existing filter logic ...
-      if (criteria.minAge != null && profile.earthage < criteria.minAge!) return false;
-      if (criteria.maxAge != null && profile.earthage > criteria.maxAge!) return false;
-      if (criteria.gender != null && criteria.gender != 'Any' && profile.gender.toLowerCase() != criteria.gender!.toLowerCase()) return false;
-      if (criteria.species != null && criteria.species != 'Any' && profile.species.toLowerCase() != criteria.species!.toLowerCase()) return false;
-      if (criteria.location != null && criteria.location != 'Any' && profile.location.toLowerCase() != criteria.location!.toLowerCase()) return false;
-      if (criteria.lookingFor != null && criteria.lookingFor != 'Any' && profile.lookingfor.toLowerCase() != criteria.lookingFor!.toLowerCase()) return false;
-      if (criteria.interests != null && criteria.interests!.isNotEmpty) {
-        bool interestMatch = false;
-        for (String interest in criteria.interests!) {
-          if (profile.interests.any((profileInterest) => profileInterest.toLowerCase() == interest.toLowerCase())) {
-            interestMatch = true;
-            break;
+    final criteria = _filterCriteriaNotifier.value;
+    setState(() {
+      _filteredProfiles = _allProfiles.where((profile) {
+        // Age filter
+        if (profile.earthage == null) {
+          // If minAge or maxAge is specified in criteria, a profile with no age doesn't match
+          if (criteria.minAge != null || criteria.maxAge != null) {
+            return false;
           }
+        } else {
+          // Only perform comparisons if profile.earthage is not null
+          if (criteria.minAge != null && profile.earthage! < criteria.minAge!) return false;
+          if (criteria.maxAge != null && profile.earthage! > criteria.maxAge!) return false;
         }
-        if (!interestMatch) return false;
-      }
-      return true;
-    }).toList();
 
-    // 5. Update the external notifier with the filtered list
-    widget.profilesNotifier.value = filtered;
-    // setState will be called by _onProfilesChanged if this listener is still active
-    // or if you need to reset _currentIndex directly here.
-    if (mounted) {
-      setState(() {
-        _currentIndex = 0;
-      });
-    }
+        // Gender filter
+        if (criteria.gender != null && profile.gender.toLowerCase() != criteria.gender!.toLowerCase()) return false;
+
+        // Species filter
+        if (criteria.species != null && profile.species.toLowerCase() != criteria.species!.toLowerCase()) return false;
+
+        // Location filter
+        if (criteria.location != null && profile.location.toLowerCase() != criteria.location!.toLowerCase()) return false;
+
+        // Looking For filter
+        if (criteria.lookingFor != null && profile.lookingfor.toLowerCase() != criteria.lookingFor!.toLowerCase()) return false;
+
+        // Interests filter (match any selected interest)
+        if (criteria.interests != null && criteria.interests!.isNotEmpty) {
+          bool interestMatch = false;
+          for (String interest in criteria.interests!) {
+            if (profile.interests.any((profileInterest) => profileInterest.toLowerCase() == interest.toLowerCase())) {
+              interestMatch = true;
+              break;
+            }
+          }
+          if (!interestMatch) return false;
+        }
+        return true;
+      }).toList();
+      _currentIndex = 0; // Reset swipe index when filters change
+    });
   }
 
-
-  // This method is called by FilterView
   void _handleApplyFilters(FilterCriteria newCriteria) {
-    // This will trigger _applyFiltersToList via the listener
-    widget.onApplyFilters(newCriteria); // Propagate to parent if needed, or handle here
-    // widget.filterCriteriaNotifier.value = newCriteria;
-    // Navigator.of(context).pop(); // Keep if FilterView is modal
+    _filterCriteriaNotifier.value = newCriteria;
+    Navigator.of(context).pop(); // Close the filter view if it's a modal
   }
-
 
   void _openFilterView() {
+    // You can show FilterView as a modal bottom sheet, a dialog, or a new route
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
+      isScrollControlled: true, // Important for full-screen height
       builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.85,
-          child: Filter( // Assuming FilterView's name is Filter
-            filterCriteriaNotifier: widget.filterCriteriaNotifier, // Pass the one from the parent
-            onApplyFilters: (newCriteria) { // This is FilterView's callback
-              widget.filterCriteriaNotifier.value = newCriteria; // Update the shared notifier
-              Navigator.of(context).pop(); // Close modal
-              // _applyFiltersToList will be called by the listener on filterCriteriaNotifier
-            },
-            // availableGenders: _availableGenders, // Pass these if still needed
+        return FractionallySizedBox( // Allows the sheet to take most of the screen
+          heightFactor: 0.85, // Adjust as needed
+          child: Filter(
+            filterCriteriaNotifier: _filterCriteriaNotifier, // Pass the existing notifier
+            onApplyFilters: _handleApplyFilters,
+            // --- Pass dynamic options if you derived them ---
+            // availableGenders: _availableGenders,
             // availableSpecies: _availableSpecies,
+            // etc.
           ),
         );
       },
     );
   }
 
-  void _onSwipeLeft() {
+  // --- Swipe and Button Actions ---
+  void _onSwipeLeft() { // "No" action
+    print("Profile disliked (or swiped left): ${_filteredProfiles.isNotEmpty && _currentIndex < _filteredProfiles.length ? _filteredProfiles[_currentIndex].name : 'N/A'}");
     setState(() {
-      // 6. Use widget.profilesNotifier.value for length check
-      if (_currentIndex < widget.profilesNotifier.value.length - 1) {
+      if (_currentIndex < _filteredProfiles.length - 1) {
         _currentIndex++;
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -167,10 +140,10 @@ class _SwipeViewState extends State<SwipeView> {
     });
   }
 
-  void _onSwipeRight() {
+  void _onSwipeRight() { // "Yes" action
+    print("Profile liked (or swiped right): ${_filteredProfiles.isNotEmpty && _currentIndex < _filteredProfiles.length ? _filteredProfiles[_currentIndex].name : 'N/A'}");
     setState(() {
-      // 6. Use widget.profilesNotifier.value for length check
-      if (_currentIndex < widget.profilesNotifier.value.length - 1) {
+      if (_currentIndex < _filteredProfiles.length - 1) {
         _currentIndex++;
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -183,43 +156,99 @@ class _SwipeViewState extends State<SwipeView> {
 
   @override
   Widget build(BuildContext context) {
-    // 7. Use ValueListenableBuilder to react to profilesNotifier changes
-    return ValueListenableBuilder<List<Xenoprofile>>(
-      valueListenable: widget.profilesNotifier,
-      builder: (context, currentProfiles, child) {
-        // currentProfiles is the live list from profilesNotifier
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text('Find Your Xeno-Match'),
-            actions: [
-              IconButton(
-                icon: Icon(Icons.filter_list),
-                onPressed: _openFilterView,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Find Your Xeno-Match'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.filter_list),
+            onPressed: _openFilterView,
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : _filteredProfiles.isEmpty
+          ? Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            _allProfiles.isEmpty
+                ? 'Could not load profiles. Check your connection or the data file.'
+                : 'No profiles match your current filters. Try adjusting them!',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+        ),
+      )
+          : Column( // Use a Column to stack the card and buttons
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded( // Make the ProfileCard take available space
+            child: Center( // Center the card within the Expanded area
+              child: (_currentIndex < _filteredProfiles.length)
+                  ? GestureDetector( // Simple GestureDetector for swipe
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity == null) return;
+                  if (details.primaryVelocity! < 0) {
+                    _onSwipeLeft(); // Swiped left
+                  } else if (details.primaryVelocity! > 0) {
+                    _onSwipeRight(); // Swiped right
+                  }
+                },
+                child: ProfileCard(profile: _filteredProfiles[_currentIndex]),
+              )
+                  : Padding( // Message when all profiles are swiped through
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  "You've seen all profiles for now!",
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
-            ],
-          ),
-          body: _isLoading // Check loading state for the initial load
-              ? Center(child: CircularProgressIndicator())
-              : currentProfiles.isEmpty // Use currentProfiles from the builder
-              ? Center(
-            child: Text(
-              _internalAllProfiles.isEmpty && _isLoading == false // Check if initial load failed
-                  ? 'Could not load profiles. Check connection or data.'
-                  : 'No profiles match filters. Adjust them!',
-              textAlign: TextAlign.center,
             ),
-          )
-              : GestureDetector(
-            onHorizontalDragEnd: (details) {
-              if (details.primaryVelocity! < 0) _onSwipeLeft();
-              else if (details.primaryVelocity! > 0) _onSwipeRight();
-            },
-            // Use currentProfiles from the builder
-            child: ProfileCard(profile: currentProfiles[_currentIndex]),
           ),
-        );
-      },
+          // Show buttons only if there's a card currently visible
+          if (_filteredProfiles.isNotEmpty && _currentIndex < _filteredProfiles.length)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _onSwipeLeft, // "No" action
+                    icon: Icon(Icons.close, size: 28),
+                    label: Text('No', style: TextStyle(fontSize: 18)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _onSwipeRight, // "Yes" action
+                    icon: Icon(Icons.favorite, size: 28, color: Colors.pinkAccent), // Using favorite for "Yes"
+                    label: Text('Yes', style: TextStyle(fontSize: 18)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // Optional: Add a small spacer if there are no more profiles but buttons were just hidden
+          if (_filteredProfiles.isNotEmpty && _currentIndex >= _filteredProfiles.length)
+            SizedBox(height: 80), // Placeholder for button area height
+        ],
+      ),
     );
   }
 }
@@ -227,42 +256,98 @@ class _SwipeViewState extends State<SwipeView> {
 // --- Basic Profile Card Widget (Example) ---
 class ProfileCard extends StatelessWidget {
   final Xenoprofile profile;
+
   const ProfileCard({Key? key, required this.profile}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: EdgeInsets.all(16.0),
-      elevation: 4.0,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            if (profile.imageUrl.isNotEmpty)
-              Center(
-                child: Image.asset(
-                  profile.imageUrl,
-                  height: 250,
-                  width: double.infinity,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Icon(Icons.person, size: 100);
-                  },
+      margin: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), // Adjust margin
+      elevation: 5.0,
+      clipBehavior: Clip.antiAlias, // To ensure rounded corners clip the image
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15.0),
+      ),
+      child: SingleChildScrollView( // Make card content scrollable if it overflows
+        child: Padding(
+          padding: const EdgeInsets.all(1.0), // No padding for the card itself, image will fill
+          child: Column(
+            // mainAxisSize: MainAxisSize.min, // Can remove if using SingleChildScrollView and Expanded
+            crossAxisAlignment: CrossAxisAlignment.stretch, // Make children stretch
+            children: <Widget>[
+              if (profile.imageUrl.isNotEmpty)
+                ClipRRect( // Clip the image to have rounded top corners
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
+                  child: Image.asset(
+                    profile.imageUrl,
+                    height: 300, // Increased height
+                    width: double.infinity,
+                    fit: BoxFit.cover, // Cover ensures the image fills the bounds
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container( // Placeholder container
+                        height: 300,
+                        color: Colors.grey[300],
+                        child: Icon(Icons.broken_image, size: 100, color: Colors.grey[600]),
+                      );
+                    },
+                  ),
+                )
+              else // Placeholder if no image URL
+                Container(
+                  height: 300,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
+                  ),
+                  child: Icon(Icons.person_outline, size: 150, color: Colors.grey[400]),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(16.0), // Padding for the text content
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${profile.name}, ${profile.earthage ?? 'N/A'}', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.public, size: 18, color: Colors.grey[700]),
+                        SizedBox(width: 6),
+                        Text('Species: ${profile.species}', style: Theme.of(context).textTheme.bodyLarge),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.location_on_outlined, size: 18, color: Colors.grey[700]),
+                        SizedBox(width: 6),
+                        Text('Location: ${profile.location}', style: Theme.of(context).textTheme.bodyLarge),
+                      ],
+                    ),
+                    SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.search, size: 18, color: Colors.grey[700]),
+                        SizedBox(width: 6),
+                        Text('Looking for: ${profile.lookingfor}', style: Theme.of(context).textTheme.bodyLarge),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+                    Text('Interests:', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4),
+                    Wrap( // Use Wrap for interests if they can be many
+                      spacing: 6.0,
+                      runSpacing: 4.0,
+                      children: profile.interests.map((interest) => Chip(label: Text(interest))).toList(),
+                    ),
+                    SizedBox(height: 12),
+                    Text('Bio:', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4),
+                    Text(profile.bio, style: Theme.of(context).textTheme.bodyMedium),
+                  ],
                 ),
               ),
-            SizedBox(height: 16),
-            Text('${profile.name}, ${profile.earthage}', style: Theme.of(context).textTheme.headlineSmall),
-            SizedBox(height: 8),
-            Text('Species: ${profile.species}'),
-            Text('Location: ${profile.location}'),
-            Text('Looking for: ${profile.lookingfor}'),
-            SizedBox(height: 8),
-            Text('Interests: ${profile.interests.join(', ')}'),
-            SizedBox(height: 8),
-            Text('Bio: ${profile.bio}', style: Theme.of(context).textTheme.bodyMedium),
-          ],
+            ],
+          ),
         ),
       ),
     );

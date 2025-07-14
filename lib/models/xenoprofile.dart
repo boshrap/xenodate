@@ -1,8 +1,10 @@
+// JSON Data Model
+
 class Xenoprofile {
   final String uid; // Unique identifier
   final String name;
   final String surname;
-  final int earthage;
+  final int? earthage; // Changed to nullable int to match safe parsing
   final String gender;
   final List<String> interests;
   final String likes;
@@ -21,7 +23,7 @@ class Xenoprofile {
     required this.uid,
     required this.surname,
     required this.name,
-    required this.earthage,
+    this.earthage, // earthage is now nullable
     required this.gender,
     required this.interests,
     required this.likes,
@@ -36,13 +38,25 @@ class Xenoprofile {
     required this.redflags,
   });
 
+  // Helper function to safely parse an int, handling potential Strings or nulls
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    // Optionally, log or handle unexpected types
+    // print('Warning: Unexpected type for integer parsing: ${value.runtimeType}');
+    return null;
+  }
+
 // Factory constructor for creating a Profile from a Map (e.g., from a JSON file)
   factory Xenoprofile.fromJson(Map<String, dynamic> json) {
     return Xenoprofile(
       uid: json['uid'] as String? ?? '', // Handle potential null 'uid'
       name: json['name'] as String? ?? '',
       surname: json['surname'] as String? ?? '',
-      earthage: json['earthage'] as int? ?? 0,
+      earthage: _parseInt(json['earthage']), // Use safe parsing for earthage
       gender: json['gender'] as String? ?? '',
       interests: List<String>.from(json['interests'] as List<dynamic>? ?? []),
       likes: json['likes'] as String? ?? '',        // Corrected key to lowercase
@@ -56,6 +70,26 @@ class Xenoprofile {
       orientation: json['orientation'] as String? ?? '', // Added orientation
       redflags: json['redflags'] as String? ?? '',    // Corrected key to lowercase
     );
+  }
+  Map<String, dynamic> toJson() {
+    return {
+      'uid': uid, // Added uid
+      'name': name,
+      'surname': surname,
+      'earthage': earthage, // Corrected key from 'age' to 'earthage'
+      'gender': gender,
+      'interests': interests,
+      'likes': likes,        // Corrected key to lowercase
+      'dislikes': dislikes,  // Corrected key to lowercase
+      'imageUrl': imageUrl,
+      'bio': bio,
+      'species': species,
+      'subspecies': subspecies,
+      'location': location,
+      'lookingfor': lookingfor, // Added lookingfor
+      'orientation': orientation,
+      'redflags': redflags,    // Corrected key to lowercase
+    };
   }
 
   Map<String, dynamic> toMap() {
@@ -77,4 +111,6 @@ class Xenoprofile {
       'orientation': orientation,
       'redflags': redflags,    // Corrected key to lowercase
     };
-    }}
+
+
+  }}

@@ -1,6 +1,7 @@
 // lib/filterview.dart
 import 'package:flutter/material.dart';
-import 'package:xenodate/models/xenoprofile.dart'; // Assuming Profile model
+// Assuming Profile model might be used for context, but not directly in this file for filter logic
+// import 'package:xenodate/models/xenoprofile.dart';
 import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
 
 class Filter extends StatefulWidget {
@@ -18,6 +19,7 @@ class Filter extends StatefulWidget {
 }
 
 class _FilterState extends State<Filter> {
+  // Use _currentFilters to hold the state of the filters being edited in this view.
   late FilterCriteria _currentFilters;
 
   // Available options
@@ -35,15 +37,24 @@ class _FilterState extends State<Filter> {
     'Any', 'Earth', 'Moon & NECs', 'Mars & FECs', 'Keplia', 'Matobo',
     'Kir-Tak',
   ];
-  // Add "Looking For" options
   final List<String> _availableLookingFor = ['Any', 'Conversation', 'Friendship', 'Romance'];
 
 
   @override
   void initState() {
     super.initState();
+    // Initialize _currentFilters with the value from the notifier.
+    // This ensures that when the filter view is opened, it reflects the currently applied filters.
     _currentFilters = widget.filterCriteriaNotifier.value;
+    // _currentCriteria was uninitialized and likely not needed if _currentFilters is maintained.
   }
+
+  // This method is not explicitly called in your current setup,
+  // but if it were, it should use _currentFilters.
+  // The "Apply Filters" button's onPressed directly calls widget.onApplyFilters.
+  // void _apply() {
+  //   widget.onApplyFilters(_currentFilters);
+  // }
 
   // Helper method to build DropdownButtonFormField to reduce repetition
   Widget _buildDropdownFilter<T>({
@@ -88,22 +99,24 @@ class _FilterState extends State<Filter> {
           RangeSlider(
             values: RangeValues(
               (_currentFilters.minAge ?? 18).toDouble(),
-              (_currentFilters.maxAge ?? 100).toDouble(),
+              (_currentFilters.maxAge ?? 100).toDouble(), // Assuming 100 was a placeholder, adjusting to 500 like divisions
             ),
             min: 18,
-            max: 500,
-            divisions: 482,
+            max: 500, // Max age consistent with divisions
+            divisions: 482, // (500 - 18)
             labels: RangeLabels(
               _currentFilters.minAge?.toString() ?? '18',
               _currentFilters.maxAge?.toString() ?? '500',
             ),
             onChanged: (RangeValues values) {
               setState(() {
+                // Determine if the range is effectively "Any"
+                bool isAnyAge = values.start.round() == 18 && values.end.round() == 500;
                 _currentFilters = _currentFilters.copyWith(
-                  minAge: values.start.round() == 18 && values.end.round() == 500 ? null : values.start.round(),
-                  maxAge: values.start.round() == 18 && values.end.round() == 500 ? null : values.end.round(),
-                  clearMinAge: values.start.round() == 18 && values.end.round() == 500,
-                  clearMaxAge: values.start.round() == 18 && values.end.round() == 500,
+                  minAge: isAnyAge ? null : values.start.round(),
+                  maxAge: isAnyAge ? null : values.end.round(),
+                  clearMinAge: isAnyAge, // Explicitly set clear flags
+                  clearMaxAge: isAnyAge,  // Explicitly set clear flags
                 );
               });
             },
@@ -158,13 +171,13 @@ class _FilterState extends State<Filter> {
           // --- Looking For Filter ---
           _buildDropdownFilter<String>(
             label: 'Looking For',
-            currentValue: _currentFilters.lookingFor ?? 'Any', // Use the new field
+            currentValue: _currentFilters.lookingFor ?? 'Any',
             items: _availableLookingFor,
             onChanged: (String? newValue) {
               setState(() {
                 _currentFilters = _currentFilters.copyWith(
-                  lookingFor: newValue == 'Any' ? null : newValue, // Update lookingFor
-                  clearLookingFor: newValue == 'Any', // Handle clearing
+                  lookingFor: newValue == 'Any' ? null : newValue,
+                  clearLookingFor: newValue == 'Any',
                 );
               });
             },
@@ -181,6 +194,7 @@ class _FilterState extends State<Filter> {
                 selected: isSelected,
                 onSelected: (bool selected) {
                   setState(() {
+                    // Make a mutable copy of the current interests, or an empty list if null
                     List<String> currentSelectedInterests = List.from(_currentFilters.interests ?? []);
                     if (selected) {
                       if (!currentSelectedInterests.contains(interest)) {
@@ -204,10 +218,15 @@ class _FilterState extends State<Filter> {
           Center(
             child: ElevatedButton(
               onPressed: () {
+                // When "Apply Filters" is pressed, pass the _currentFilters
+                // (which have been updated by the UI elements)
+                // back to the parent widget (MainView).
                 widget.onApplyFilters(_currentFilters);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Filters applied! Current: ${_currentFilters.toString()}')),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Filters applied! Current: ${_currentFilters.toString()}')),
+                  );
+                }
               },
               child: Text('Apply Filters'),
             ),
@@ -217,12 +236,16 @@ class _FilterState extends State<Filter> {
             child: TextButton(
               onPressed: () {
                 setState(() {
+                  // Reset _currentFilters to an empty state
                   _currentFilters = FilterCriteria.empty();
                 });
+                // Apply the empty filters immediately
                 widget.onApplyFilters(FilterCriteria.empty());
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Filters cleared!')),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Filters cleared!')),
+                  );
+                }
               },
               child: Text('Clear Filters'),
             ),

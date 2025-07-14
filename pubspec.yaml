@@ -32,15 +32,19 @@ dependencies:
     sdk: flutter
   image_picker:
   provider:
-  flutter_chat_ui: ^1.6.15
+  flutter_chat_ui: ^2.7.0
+  flutter_chat_core:
+  flutter_chat_types:
   swipe_cards: ^2.0.0+1
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   firebase_core:
   firebase_auth:
+  firebase_storage:
   cloud_firestore:
-  cloud_functions: ^4.0.0 # Check for the latest version
+  cloud_functions: ^5.6.1 # Check for the latest version
+
 
 dev_dependencies:
   flutter_test:
@@ -51,7 +55,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -74,10 +78,10 @@ flutter:
 
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
-assets:
-  - logo/Xenodate-logo.png
-  - assets/logo/Xenodate-logo.png
-  - assets/profiles/xenopersonas_DATA.json
+  assets:
+    - logo/Xenodate-logo.png
+    - assets/logo/Xenodate-logo.png
+    - assets/profiles/xenopersonas_DATA.json
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a
   # "family" key with the font family name, and a "fonts" key with a

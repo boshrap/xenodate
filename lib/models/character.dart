@@ -1,7 +1,7 @@
+// Firestore Data Model
 // lib/models/character.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-
 
 class Character {
   final String id;
@@ -24,9 +24,24 @@ class Character {
     this.createdAt,
   });
 
+  factory Character.fromJson(Map<String, dynamic> json) {
+    return Character(
+      id: json['id'],
+      name: json['name'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+    };
+  }
+
+
   // Factory constructor to create a Character from a Firestore document
-  factory Character.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data();
+  factory Character.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc, snapshot) {
+    final data = snapshot.data();
     if (data == null) {
       throw StateError("Missing data for Character ${doc.id}");
     }
@@ -55,3 +70,5 @@ class Character {
     };
   }
 }
+
+

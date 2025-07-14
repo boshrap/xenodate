@@ -26,7 +26,7 @@ class _MyCharactersPageState extends State<MyCharactersPage> {
           .orderBy('createdAt', descending: true) // Optional: order by creation time
           .snapshots()
           .map((snapshot) => snapshot.docs
-          .map((doc) => Character.fromFirestore(doc))
+          .map((doc) => Character.fromFirestore(doc,snapshot))
           .toList());
     }
   }

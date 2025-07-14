@@ -5,7 +5,7 @@ import 'package:xenodate/models/xenoprofile.dart'; // Adjust the path as necessa
 Future<List<Xenoprofile>> loadXenoprofiles() async {
   try {
     // 1. Load the JSON string from the asset file
-    final String jsonString = await rootBundle.loadString('assets/xenopersonas_data.json');
+    final String jsonString = await rootBundle.loadString('assets/profiles/xenopersonas_DATA.json');
 
     // 2. Decode the JSON string
     //    This assumes your xenopersonas_data.json is a list of profiles

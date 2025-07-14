@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:xenodate/swipeview.dart';
 import 'package:xenodate/data_utils.dart';
 import 'package:xenodate/matches.dart';
-import 'package:xenodate/filterview.dart';
+// import 'package:xenodate/filterview.dart'; // REMOVED: No longer needed if Filter view is gone
 import 'package:xenodate/menudrawer.dart';
-import 'package:xenodate/models/xenoprofile.dart'; // Import your Profile model
-import 'package:xenodate/models/filter.dart';    // Import your FilterCriteria model
+import 'package:xenodate/models/xenoprofile.dart';
+import 'package:xenodate/models/filter.dart';
 
 
-enum Selector { filter, swipe, matches }
+// MODIFIED: Removed Selector.filter
+enum Selector { swipe, matches }
 
 class NavButtons extends StatefulWidget {
   final ValueNotifier<Selector> selectorNotifier;
@@ -24,26 +25,18 @@ class _NavButtonsState extends State<NavButtons> {
   Widget build(BuildContext context) {
     return ToggleButtons(
       isSelected: [
-        widget.selectorNotifier.value == Selector.filter,
+        // MODIFIED: Adjusted for removed filter
         widget.selectorNotifier.value == Selector.swipe,
         widget.selectorNotifier.value == Selector.matches,
       ],
       onPressed: (int index) {
         setState(() {
+          // MODIFIED: Adjusted for removed filter
           widget.selectorNotifier.value = Selector.values[index];
         });
       },
+      // MODIFIED: Removed Filter button
       children: const <Widget>[
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.0),
-          child: Row(
-            children: [
-              Icon(Icons.filter_alt),
-              SizedBox(width: 4),
-              Text('Filter'),
-            ],
-          ),
-        ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
@@ -78,13 +71,19 @@ class MainView extends StatefulWidget {
 }
 
 class MainViewState extends State<MainView> {
+  // MODIFIED: Default to swipe if filter is removed
   ValueNotifier<Selector> selectorNotifier = ValueNotifier<Selector>(Selector.swipe);
 
   final ValueNotifier<List<Xenoprofile>> _allProfilesNotifier = ValueNotifier<List<Xenoprofile>>([]);
   final ValueNotifier<List<Xenoprofile>> _filteredProfilesNotifier = ValueNotifier<List<Xenoprofile>>([]);
   final ValueNotifier<FilterCriteria> _filterCriteriaNotifier = ValueNotifier<FilterCriteria>(FilterCriteria.empty());
 
-  late final Filter _filterView;
+  // If you still need to apply filters, keep this. Otherwise, remove it.
+  void _updateFilters(FilterCriteria newFilters) {
+    _filterCriteriaNotifier.value = newFilters;
+  }
+
+  // late final Filter _filterView; // REMOVED
   late final SwipeView _swipeView;
   late final XenoMatches _xenoMatchesView;
 
@@ -93,14 +92,14 @@ class MainViewState extends State<MainView> {
     super.initState();
     selectorNotifier.addListener(_onSelectorChanged);
 
-    _filterView = Filter(
-      filterCriteriaNotifier: _filterCriteriaNotifier,
-      onApplyFilters: _applyFilters,
-    );
+    // _filterView = Filter( // REMOVED
+    //   filterCriteriaNotifier: _filterCriteriaNotifier,
+    //   onApplyFilters: _applyFilters,
+    // );
     _swipeView = SwipeView(profilesNotifier: _filteredProfilesNotifier);
     _xenoMatchesView = XenoMatches();
 
-    _fetchAndSetProfiles(); // Changed from _loadProfiles to _fetchAndSetProfiles
+    _fetchAndSetProfiles();
     _filterCriteriaNotifier.addListener(_onFilterCriteriaChanged);
   }
 
@@ -119,18 +118,11 @@ class MainViewState extends State<MainView> {
     super.dispose();
   }
 
-  // --- MODIFIED METHOD to load from JSON ---
   Future<void> _fetchAndSetProfiles() async {
-    // Show a loading indicator if you want (optional)
-    // For example, you could add a ValueNotifier<bool> _isLoadingNotifier
-
-    List<Xenoprofile> loadedProfiles = await loadXenoprofiles(); // Call the JSON loading function
+    List<Xenoprofile> loadedProfiles = await loadXenoprofiles();
     _allProfilesNotifier.value = loadedProfiles;
-    _applyFilters(_filterCriteriaNotifier.value); // Apply initial (empty) filter
-
-    // Hide loading indicator (if you added one)
+    _applyFilters(_filterCriteriaNotifier.value);
   }
-  // --- END MODIFIED METHOD ---
 
   void _onFilterCriteriaChanged() {
     _applyFilters(_filterCriteriaNotifier.value);
@@ -147,15 +139,14 @@ class MainViewState extends State<MainView> {
   }
 
   int _getSelectedIndex() {
+    // MODIFIED: Adjusted for removed filter
     switch (selectorNotifier.value) {
-      case Selector.filter:
-        return 0;
       case Selector.swipe:
-        return 1;
+        return 0; // Swipe is now the first item
       case Selector.matches:
-        return 2;
+        return 1; // Matches is now the second item
       default:
-        return 1;
+        return 0; // Default to swipe
     }
   }
 
@@ -163,11 +154,10 @@ class MainViewState extends State<MainView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: Image.network(
-          'logo/Xenodate-logo.png', // Consider adding this to your assets for offline use
+        leading: Image.asset(
+          'logo/Xenodate-logo.png',
           errorBuilder: (context, error, stackTrace) {
-            // Placeholder if logo fails to load (e.g., local asset instead)
-            return Icon(Icons.error_outline); // Or Image.asset('assets/logo/Xenodate-logo.png')
+            return Icon(Icons.error_outline);
           },
         ),
         title: Text("Xenodate"),
@@ -191,8 +181,9 @@ class MainViewState extends State<MainView> {
           Expanded(
             child: IndexedStack(
               index: _getSelectedIndex(),
+              // MODIFIED: Removed _filterView
               children: <Widget>[
-                _filterView,
+                // _filterView, // REMOVED
                 _swipeView,
                 _xenoMatchesView,
               ],
@@ -204,7 +195,6 @@ class MainViewState extends State<MainView> {
   }
 }
 
-// Ensure MyApp and main() are still present if this is your main app file
 void main() {
   runApp(MyApp());
 }
@@ -219,7 +209,7 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: MainView(),
-      debugShowCheckedModeBanner: false, // Optional: remove debug banner
+      debugShowCheckedModeBanner: false,
     );
   }
 }
