@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // To get the current user
-import 'package:xenodate/models/character.dart'; // Assuming your package name is 'xenodate'
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:xenodate/models/character.dart';
+import 'package:xenodate/services/charserv.dart'; // Your service
+import 'package:provider/provider.dart'; // Make sure to import
+import 'package:xenodate/newchar.dart';
 
 class MyCharactersPage extends StatefulWidget {
   const MyCharactersPage({Key? key}) : super(key: key);
@@ -11,29 +13,28 @@ class MyCharactersPage extends StatefulWidget {
 }
 
 class _MyCharactersPageState extends State<MyCharactersPage> {
-  final User? _currentUser = FirebaseAuth.instance.currentUser;
-
+  final CharacterService _characterService = CharacterService();
   Stream<List<Character>>? _charactersStream;
+  bool _showAddButton = true; // State to control FAB visibility
 
   @override
   void initState() {
     super.initState();
-    if (_currentUser != null) {
-      _charactersStream = FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .collection('characters')
-          .orderBy('createdAt', descending: true) // Optional: order by creation time
-          .snapshots()
-          .map((snapshot) => snapshot.docs
-          .map((doc) => Character.fromFirestore(doc,snapshot))
-          .toList());
-    }
+    _charactersStream = _characterService.getCharactersStream();
+  }
+
+  void _navigateToAddCharacterPage() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NewChar()));
+    print("Navigate to add character page");
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Navigate to character creation (Not implemented yet)")),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_currentUser == null) {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
       return Scaffold(
         appBar: AppBar(title: const Text("My Characters")),
         body: const Center(
@@ -45,15 +46,6 @@ class _MyCharactersPageState extends State<MyCharactersPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("My Characters"),
-        // You could add an action to create a new character
-        // actions: [
-        //   IconButton(
-        //     icon: Icon(Icons.add),
-        //     onPressed: () {
-        //       Navigator.push(context, MaterialPageRoute(builder: (context) => NewChar()));
-        //     },
-        //   ),
-        // ],
       ),
       body: StreamBuilder<List<Character>>(
         stream: _charactersStream,
@@ -63,17 +55,41 @@ class _MyCharactersPageState extends State<MyCharactersPage> {
           }
           if (snapshot.hasError) {
             print("Error fetching characters: ${snapshot.error}");
+            // It's good practice to hide the FAB on error too, or handle appropriately
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _showAddButton = false;
+                });
+              }
+            });
             return Center(child: Text("Error: ${snapshot.error}"));
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            // Show button if no characters
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) { // Ensure the widget is still in the tree
+                setState(() {
+                  _showAddButton = true;
+                });
+              }
+            });
             return const Center(
               child: Text("You haven't created any characters yet."),
             );
           }
 
           List<Character> characters = snapshot.data!;
+          // Update FAB visibility based on character count
+          // Use addPostFrameCallback to avoid calling setState during a build phase
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) { // Ensure the widget is still in the tree
+              setState(() {
+                _showAddButton = characters.length < 3;
+              });
+            }
+          });
 
-          // Using ListView.builder for efficient list rendering
           return ListView.builder(
             padding: const EdgeInsets.all(8.0),
             itemCount: characters.length,
@@ -81,23 +97,15 @@ class _MyCharactersPageState extends State<MyCharactersPage> {
               return CharacterCard(character: characters[index]);
             },
           );
-
-          // --- Alternative: GridView ---
-          // return GridView.builder(
-          //   padding: const EdgeInsets.all(8.0),
-          //   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          //     crossAxisCount: 2, // Or 3, depending on your design
-          //     childAspectRatio: 0.75, // Adjust as needed
-          //     crossAxisSpacing: 8.0,
-          //     mainAxisSpacing: 8.0,
-          //   ),
-          //   itemCount: characters.length,
-          //   itemBuilder: (context, index) {
-          //     return CharacterCard(character: characters[index]);
-          //   },
-          // );
         },
       ),
+      floatingActionButton: _showAddButton
+          ? FloatingActionButton(
+        onPressed: _navigateToAddCharacterPage,
+        tooltip: 'Add Character',
+        child: const Icon(Icons.add),
+      )
+          : null, // Hide FAB if not needed
     );
   }
 }
@@ -110,14 +118,32 @@ class CharacterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final characterService = Provider.of<CharacterService>(context, listen: false);
     return Card(
       elevation: 4.0,
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
       child: InkWell( // To make the card tappable for future navigation to a detail screen
-        onTap: () {
-          // TODO: Navigate to a character detail page if needed
-          // Navigator.push(context, MaterialPageRoute(builder: (context) => CharacterDetailPage(characterId: character.id)));
+        onTap: () async {
+          try {
+            if (character.id == null) {
+              print("Character ID is null. Cannot switch character.");
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Error: Character ID is missing.")),
+              );
+              return;
+            }
+            await characterService.switchCharacter(character.id!);
+            print("Switched to ${character.name}");
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Selected ${character.name}")),
+            );
+          } catch (e) {
+            print("Error switching character: $e");
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Error switching character: $e")),
+            );
+          }
           print("Tapped on ${character.name}");
         },
         child: Padding(
@@ -144,11 +170,66 @@ class CharacterCard extends StatelessWidget {
               //   ),
               // ),
               // const SizedBox(height: 10),
-              Text(
-                character.name,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row( // Wrap Title and Delete button in a Row
+                mainAxisAlignment: MainAxisAlignment.spaceBetween, // Align items
+                children: [
+                  Expanded( // To ensure text still wraps and takes available space
+                    child: Text(
+                      character.name,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete, color: Colors.red[700]), // Made delete icon more prominent
+                    onPressed: () async {
+                      // Confirmation dialog before deleting
+                      final confirmDelete = await showDialog<bool>(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('Confirm Delete'),
+                            content: Text('Are you sure you want to delete ${character.name}?'),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      if (confirmDelete == true) {
+                        try {
+                          if (character.id == null) {
+                            print("Character ID is null. Cannot delete character.");
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Error: Character ID is missing for deletion.")),
+                            );
+                            return;
+                          }
+                          await characterService.deleteCharacter(character.id!);
+                          print("${character.name} deleted.");
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("${character.name} has been deleted.")),
+                          );
+                        } catch (e) {
+                          print("Error deleting character: $e");
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Error deleting character: $e")),
+                          );
+                        }
+                      }
+                    },
+                    tooltip: 'Delete Character',
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               if (character.species != null)
@@ -179,9 +260,8 @@ class CharacterCard extends StatelessWidget {
               //   mainAxisAlignment: MainAxisAlignment.end,
               //   children: [
               //     IconButton(icon: Icon(Icons.edit), onPressed: () { /* TODO: Edit action */ }),
-              //     IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () { /* TODO: Delete action */ }),
               //   ],
-              // )
+              // ) // Removed the old Row as delete is now at the top
             ],
           ),
         ),

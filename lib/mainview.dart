@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:xenodate/swipeview.dart';
-import 'package:xenodate/data_utils.dart';
 import 'package:xenodate/matches.dart';
-// import 'package:xenodate/filterview.dart'; // REMOVED: No longer needed if Filter view is gone
 import 'package:xenodate/menudrawer.dart';
 import 'package:xenodate/models/xenoprofile.dart';
 import 'package:xenodate/models/filter.dart';
+import 'package:xenodate/services/xenoprofserv.dart';
 
 
 // MODIFIED: Removed Selector.filter
@@ -77,6 +76,7 @@ class MainViewState extends State<MainView> {
   final ValueNotifier<List<Xenoprofile>> _allProfilesNotifier = ValueNotifier<List<Xenoprofile>>([]);
   final ValueNotifier<List<Xenoprofile>> _filteredProfilesNotifier = ValueNotifier<List<Xenoprofile>>([]);
   final ValueNotifier<FilterCriteria> _filterCriteriaNotifier = ValueNotifier<FilterCriteria>(FilterCriteria.empty());
+  final XenoprofileService _xenoprofileService = XenoprofileService();
 
   // If you still need to apply filters, keep this. Otherwise, remove it.
   void _updateFilters(FilterCriteria newFilters) {
@@ -84,7 +84,7 @@ class MainViewState extends State<MainView> {
   }
 
   // late final Filter _filterView; // REMOVED
-  late final SwipeView _swipeView;
+  late final SwipeViewWithMatching _swipeView;
   late final XenoMatches _xenoMatchesView;
 
   @override
@@ -96,7 +96,7 @@ class MainViewState extends State<MainView> {
     //   filterCriteriaNotifier: _filterCriteriaNotifier,
     //   onApplyFilters: _applyFilters,
     // );
-    _swipeView = SwipeView(profilesNotifier: _filteredProfilesNotifier);
+    _swipeView = SwipeViewWithMatching(profilesNotifier: _filteredProfilesNotifier, userId: '',);
     _xenoMatchesView = XenoMatches();
 
     _fetchAndSetProfiles();
@@ -119,10 +119,13 @@ class MainViewState extends State<MainView> {
   }
 
   Future<void> _fetchAndSetProfiles() async {
-    List<Xenoprofile> loadedProfiles = await loadXenoprofiles();
+    // Use the service to get profiles
+    List<Xenoprofile> loadedProfiles =
+    await _xenoprofileService.getAllXenoprofiles();
     _allProfilesNotifier.value = loadedProfiles;
-    _applyFilters(_filterCriteriaNotifier.value);
+    _applyFilters(_filterCriteriaNotifier.value); // Apply initial filters
   }
+
 
   void _onFilterCriteriaChanged() {
     _applyFilters(_filterCriteriaNotifier.value);

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Character {
   final String id;
+  final String? uid; // Add this line
   final String name;
   final String? species;
   final int? age;
@@ -15,6 +16,7 @@ class Character {
 
   Character({
     required this.id,
+    this.uid, // Add this line
     required this.name,
     this.species,
     this.age,
@@ -24,10 +26,41 @@ class Character {
     this.createdAt,
   });
 
-  factory Character.fromJson(Map<String, dynamic> json) {
+  Character copyWith({
+    String? id,
+    String? uid,
+    String? name,
+    String? species,
+    int? age,
+    String? gender,
+    String? lookingFor,
+    String? biography,
+    Timestamp? createdAt,
+  }) {
     return Character(
-      id: json['id'],
+      id: id ?? this.id,
+      uid: uid ?? this.uid,
+      name: name ?? this.name,
+      species: species ?? this.species,
+      age: age ?? this.age,
+      gender: gender ?? this.gender,
+      lookingFor: lookingFor ?? this.lookingFor,
+      biography: biography ?? this.biography,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  factory Character.fromJson(Map<String, dynamic> json, String id) {
+    return Character(
+      id: json['id'] as String,
+      uid: json['uid'],
       name: json['name'],
+      species: json['species'] as String?,
+      age: json['age'] as int?,
+      gender: json['gender'] as String?,
+      lookingFor: json['lookingFor'] as String?,
+      biography: json['biography'] as String?,
+      createdAt: json['createdAt'] as Timestamp?,
     );
   }
 
@@ -35,6 +68,15 @@ class Character {
     return {
       'id': id,
       'name': name,
+      // You should also include other fields in JSON here
+      // For example:
+      if (uid != null) 'uid': uid,
+      if (species != null) 'species': species,
+      if (age != null) 'age': age,
+      if (gender != null) 'gender': gender,
+      if (lookingFor != null) 'lookingFor': lookingFor,
+      if (biography != null) 'biography': biography,
+      if (createdAt != null) 'createdAt': createdAt,
     };
   }
 
@@ -70,5 +112,3 @@ class Character {
     };
   }
 }
-
-

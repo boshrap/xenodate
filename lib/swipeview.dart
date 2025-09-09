@@ -1,30 +1,54 @@
-// lib/swipeview.dart
+// lib/swipeview_with_matching.dart
 import 'dart:convert';
+import 'dart:math'; // Import for Random
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle; // For loading JSON
+import 'package:provider/provider.dart';
 import 'package:xenodate/models/xenoprofile.dart';
+import 'package:xenodate/models/character.dart';
 import 'package:xenodate/models/filter.dart';
-import 'package:xenodate/filterview.dart'; // Your FilterView
+import 'package:xenodate/filterview.dart';
+import 'package:xenodate/profilecard.dart';
+import 'package:xenodate/services/matching_service.dart';
+import 'package:xenodate/services/charserv.dart';
+import 'package:xenodate/services/xenoprofserv.dart';
+import 'package:xenodate/characterselector.dart';
 
-class SwipeView extends StatefulWidget {
-  const SwipeView({Key? key, required ValueNotifier<List<Xenoprofile>> profilesNotifier}) : super(key: key);
+class SwipeViewWithMatching extends StatefulWidget {
+  final String userId;
+
+  const SwipeViewWithMatching({Key? key, required this.userId, required ValueNotifier<List<Xenoprofile>> profilesNotifier}) : super(key: key);
 
   @override
-  _SwipeViewState createState() => _SwipeViewState();
+  _SwipeViewWithMatchingState createState() => _SwipeViewWithMatchingState();
 }
 
-class _SwipeViewState extends State<SwipeView> {
+class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
   List<Xenoprofile> _allProfiles = [];
   List<Xenoprofile> _filteredProfiles = [];
-  ValueNotifier<FilterCriteria> _filterCriteriaNotifier =
-  ValueNotifier(FilterCriteria.empty());
+  ValueNotifier<FilterCriteria> _filterCriteriaNotifier = ValueNotifier(FilterCriteria.empty());
+
+  final MatchingService _matchingService = MatchingService();
+
+  Character? _currentUserCharacter;
   bool _isLoading = true;
-  int _currentIndex = 0; // For swiping
+  int _currentIndex = 0;
+
+  Map<String, double> _compatibilityScores = {};
+
+  late CharacterService _characterService;
+  late XenoprofileService _xenoprofileService;
+
 
   @override
   void initState() {
     super.initState();
-    _loadProfiles();
+    _characterService = Provider.of<CharacterService>(context, listen: false);
+    _xenoprofileService = Provider.of<XenoprofileService>(context, listen: false);
+    _characterService.addListener(_onCharacterServiceChange);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
+    });
     _filterCriteriaNotifier.addListener(_applyFiltersToList);
   }
 
@@ -32,26 +56,82 @@ class _SwipeViewState extends State<SwipeView> {
   void dispose() {
     _filterCriteriaNotifier.removeListener(_applyFiltersToList);
     _filterCriteriaNotifier.dispose();
+    _characterService.removeListener(_onCharacterServiceChange);
     super.dispose();
   }
 
-  Future<void> _loadProfiles() async {
+  void _onCharacterServiceChange() {
+    print("CharacterService changed, re-initializing data for SwipeView");
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
+
     try {
-      final String response =
-      await rootBundle.loadString('assets/profiles/xenopersonas_DATA.json');
-      final List<dynamic> data = json.decode(response) as List<dynamic>;
-      _allProfiles = data.map((jsonItem) => Xenoprofile.fromJson(jsonItem as Map<String, dynamic>)).toList();
-      _applyFiltersToList(); // Apply initial (empty) filters
+      _currentUserCharacter = await _characterService.getSelectedCharacter(widget.userId);
+
+      if (_currentUserCharacter == null) {
+        if (mounted) {
+          // It seems noChar2NewChar is a custom function you have.
+          // Make sure it handles navigation or UI changes appropriately.
+          // await noChar2NewChar(context);
+          print("No character selected, prompting for creation/selection.");
+          if (mounted) {
+            setState(() { _isLoading = false; });
+          }
+        }
+        return;
+      }
+
+      await _loadProfiles();
+
     } catch (e) {
-      print("Error loading profiles: $e");
-      // Handle error, e.g., show a message to the user
+      print("Error initializing data: $e");
+      if (mounted) _showErrorDialog("Failed to load data. Please try again.");
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadProfiles() async {
+    try {
+      _allProfiles = await _xenoprofileService.getAllXenoprofiles();
+
+      if (_currentUserCharacter == null) {
+        print("Current user character is null in _loadProfiles. This should ideally be handled before calling _loadProfiles or lead to a state where no profiles are shown.");
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _filteredProfiles = []; // Ensure filtered profiles are empty
+          });
+        }
+        return;
+      }
+
+      _calculateCompatibilityScores();
+      _applyFiltersToList();
+    } catch (e) {
+      print("Error loading profiles from service: $e");
+      if (mounted) _showErrorDialog("Failed to load profiles. Please check your connection.");
+      // Re-throwing or handling appropriately
+    }
+  }
+
+  void _calculateCompatibilityScores() {
+    if (_currentUserCharacter == null) return;
+
+    _compatibilityScores.clear();
+    for (Xenoprofile profile in _allProfiles) {
+      double score = _matchingService.calculateCompatibilityScore(_currentUserCharacter!, profile);
+      _compatibilityScores[profile.id] = score;
     }
   }
 
@@ -59,35 +139,25 @@ class _SwipeViewState extends State<SwipeView> {
     final criteria = _filterCriteriaNotifier.value;
     setState(() {
       _filteredProfiles = _allProfiles.where((profile) {
-        // Age filter
         if (profile.earthage == null) {
-          // If minAge or maxAge is specified in criteria, a profile with no age doesn't match
           if (criteria.minAge != null || criteria.maxAge != null) {
             return false;
           }
         } else {
-          // Only perform comparisons if profile.earthage is not null
           if (criteria.minAge != null && profile.earthage! < criteria.minAge!) return false;
           if (criteria.maxAge != null && profile.earthage! > criteria.maxAge!) return false;
         }
 
-        // Gender filter
         if (criteria.gender != null && profile.gender.toLowerCase() != criteria.gender!.toLowerCase()) return false;
-
-        // Species filter
         if (criteria.species != null && profile.species.toLowerCase() != criteria.species!.toLowerCase()) return false;
-
-        // Location filter
         if (criteria.location != null && profile.location.toLowerCase() != criteria.location!.toLowerCase()) return false;
-
-        // Looking For filter
         if (criteria.lookingFor != null && profile.lookingfor.toLowerCase() != criteria.lookingFor!.toLowerCase()) return false;
 
-        // Interests filter (match any selected interest)
         if (criteria.interests != null && criteria.interests!.isNotEmpty) {
           bool interestMatch = false;
-          for (String interest in criteria.interests!) {
-            if (profile.interests.any((profileInterest) => profileInterest.toLowerCase() == interest.toLowerCase())) {
+          List<String> profileInterests = profile.interests.map((interest) => interest.toLowerCase()).toList();
+          for (String filterInterest in criteria.interests!) {
+            if (profileInterests.contains(filterInterest.toLowerCase())) {
               interestMatch = true;
               break;
             }
@@ -96,61 +166,158 @@ class _SwipeViewState extends State<SwipeView> {
         }
         return true;
       }).toList();
-      _currentIndex = 0; // Reset swipe index when filters change
+
+      // Sort by compatibility score (highest first)
+      if (_currentUserCharacter != null) {
+        _filteredProfiles.sort((a, b) {
+          double scoreA = _compatibilityScores[a.id] ?? 0.0;
+          double scoreB = _compatibilityScores[b.id] ?? 0.0;
+          return scoreB.compareTo(scoreA); // Highest score first
+        });
+      }
+
+      // Shuffle the filtered and sorted list
+      if (_filteredProfiles.isNotEmpty) {
+        _filteredProfiles.shuffle(Random()); // Use dart:math's Random
+        print("Profiles shuffled after filtering/sorting.");
+      }
+
+      _currentIndex = 0; // Reset index to the start of the shuffled list
     });
   }
 
   void _handleApplyFilters(FilterCriteria newCriteria) {
-    _filterCriteriaNotifier.value = newCriteria;
-    Navigator.of(context).pop(); // Close the filter view if it's a modal
+    _filterCriteriaNotifier.value = newCriteria; // This will trigger _applyFiltersToList
+    Navigator.of(context).pop();
   }
 
   void _openFilterView() {
-    // You can show FilterView as a modal bottom sheet, a dialog, or a new route
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Important for full-screen height
+      isScrollControlled: true,
       builder: (context) {
-        return FractionallySizedBox( // Allows the sheet to take most of the screen
-          heightFactor: 0.85, // Adjust as needed
+        return FractionallySizedBox(
+          heightFactor: 0.85,
           child: Filter(
-            filterCriteriaNotifier: _filterCriteriaNotifier, // Pass the existing notifier
+            filterCriteriaNotifier: _filterCriteriaNotifier,
             onApplyFilters: _handleApplyFilters,
-            // --- Pass dynamic options if you derived them ---
-            // availableGenders: _availableGenders,
-            // availableSpecies: _availableSpecies,
-            // etc.
           ),
         );
       },
     );
   }
 
-  // --- Swipe and Button Actions ---
-  void _onSwipeLeft() { // "No" action
-    print("Profile disliked (or swiped left): ${_filteredProfiles.isNotEmpty && _currentIndex < _filteredProfiles.length ? _filteredProfiles[_currentIndex].name : 'N/A'}");
+  void _onSwipeLeft() async {
+    if (_currentIndex >= _filteredProfiles.length) return;
+    final currentProfile = _filteredProfiles[_currentIndex];
+    print("Profile disliked: ${currentProfile.name}");
+    _moveToNextProfile();
+  }
+
+  void _onSwipeRight() async {
+    if (_currentIndex >= _filteredProfiles.length || _currentUserCharacter == null) return;
+
+    final currentProfile = _filteredProfiles[_currentIndex];
+    print("Profile liked: ${currentProfile.name}");
+
+    bool isCompatible = _matchingService.areCompatible(_currentUserCharacter!, currentProfile);
+
+    if (isCompatible) {
+      final match = await _matchingService.createMatch(_currentUserCharacter!, currentProfile );
+      if (match != null) {
+        _showMatchCreatedDialog(currentProfile);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to create match. You may have already matched.')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Not quite compatible, but your interest has been noted!')),
+      );
+    }
+    _moveToNextProfile();
+  }
+
+  void _moveToNextProfile() {
     setState(() {
       if (_currentIndex < _filteredProfiles.length - 1) {
         _currentIndex++;
       } else {
+        // Optionally, inform the user they've reached the end of the shuffled list for the current filters
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No more profiles matching your criteria!')),
+          SnackBar(content: Text('No more profiles matching your criteria for now!')),
         );
+        // Consider what should happen here: maybe disable swipe buttons or show a different message.
+        // For now, it will just show the "You've seen all profiles for now!" message from the build method.
       }
     });
   }
 
-  void _onSwipeRight() { // "Yes" action
-    print("Profile liked (or swiped right): ${_filteredProfiles.isNotEmpty && _currentIndex < _filteredProfiles.length ? _filteredProfiles[_currentIndex].name : 'N/A'}");
-    setState(() {
-      if (_currentIndex < _filteredProfiles.length - 1) {
-        _currentIndex++;
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No more profiles matching your criteria!')),
+  void _showMatchCreatedDialog(Xenoprofile profile) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('It\'s a Match!'),
+          content: Text('You and ${profile.name} are compatible! Check your matches.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Great!'),
+            ),
+          ],
         );
-      }
-    });
+      },
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Error'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Placeholder for your noChar2NewChar function if it's not defined elsewhere
+  // or needs specific handling in this context.
+  Future<void> noChar2NewChar(BuildContext context) async {
+    // This is a placeholder. Implement your actual navigation or dialog logic here.
+    print("noChar2NewChar called - user needs to create/select a character.");
+    // Example: You might navigate to a character creation screen
+    // Navigator.of(context).push(MaterialPageRoute(builder: (_) => YourCharacterCreationScreen()));
+    // For now, just show a dialog to indicate action is needed.
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Character Required'),
+            content: Text('Please create or select a character to start viewing profiles.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  // Potentially navigate to character management screen
+                },
+                child: Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+    }
   }
 
 
@@ -158,57 +325,82 @@ class _SwipeViewState extends State<SwipeView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Find Your Xeno-Match'),
+        automaticallyImplyLeading: false,
+        title: Text(_currentUserCharacter != null ? "Profiles for ${_currentUserCharacter!.name}" : "XenoDate"),
         actions: [
           IconButton(
             icon: Icon(Icons.filter_list),
-            onPressed: _openFilterView,
+            onPressed: _currentUserCharacter != null ? _openFilterView : null, // Disable if no character
+            tooltip: _currentUserCharacter != null ? "Open Filters" : "Select a character to enable filters",
           ),
         ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
+          : _currentUserCharacter == null
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Please select or create a character profile to start matching.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                // Navigate to character selection/creation page
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => MyCharactersPage()));
+                print("Navigate to character selection/creation");
+                // You'll need to implement the actual navigation
+                // For now, triggering a re-check which might call noChar2NewChar
+                _initializeData();
+              },
+              child: Text('Select/Create Character'),
+            )
+          ],
+        ),
+      )
           : _filteredProfiles.isEmpty
           ? Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Text(
-            _allProfiles.isEmpty
-                ? 'Could not load profiles. Check your connection or the data file.'
-                : 'No profiles match your current filters. Try adjusting them!',
+            _filterCriteriaNotifier.value == FilterCriteria.empty() && _allProfiles.isNotEmpty
+                ? 'No profiles available right now. Check back later!' // General case if allProfiles exist but initial filter yields none (before user interaction)
+                : 'No profiles match your current filters. Try adjusting them or broaden your search!',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
       )
-          : Column( // Use a Column to stack the card and buttons
+          : Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Expanded( // Make the ProfileCard take available space
-            child: Center( // Center the card within the Expanded area
+          Expanded(
+            child: Center(
               child: (_currentIndex < _filteredProfiles.length)
-                  ? GestureDetector( // Simple GestureDetector for swipe
+                  ? GestureDetector(
                 onHorizontalDragEnd: (details) {
                   if (details.primaryVelocity == null) return;
                   if (details.primaryVelocity! < 0) {
-                    _onSwipeLeft(); // Swiped left
+                    _onSwipeLeft();
                   } else if (details.primaryVelocity! > 0) {
-                    _onSwipeRight(); // Swiped right
+                    _onSwipeRight();
                   }
                 },
-                child: ProfileCard(profile: _filteredProfiles[_currentIndex]),
+                child: ProfileCard(
+                  profile: _filteredProfiles[_currentIndex],
+                  compatibilityScore: _compatibilityScores[_filteredProfiles[_currentIndex].id] ?? 0.0,
+                ),
               )
-                  : Padding( // Message when all profiles are swiped through
+                  : Padding( // This is shown when _currentIndex >= _filteredProfiles.length
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
-                  "You've seen all profiles for now!",
+                  "You've seen all available profiles for the current criteria!",
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
             ),
           ),
-          // Show buttons only if there's a card currently visible
           if (_filteredProfiles.isNotEmpty && _currentIndex < _filteredProfiles.length)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
@@ -216,9 +408,9 @@ class _SwipeViewState extends State<SwipeView> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _onSwipeLeft, // "No" action
+                    onPressed: _onSwipeLeft,
                     icon: Icon(Icons.close, size: 28),
-                    label: Text('No', style: TextStyle(fontSize: 18)),
+                    label: Text('Pass', style: TextStyle(fontSize: 18)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.redAccent,
                       foregroundColor: Colors.white,
@@ -229,9 +421,9 @@ class _SwipeViewState extends State<SwipeView> {
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: _onSwipeRight, // "Yes" action
-                    icon: Icon(Icons.favorite, size: 28, color: Colors.pinkAccent), // Using favorite for "Yes"
-                    label: Text('Yes', style: TextStyle(fontSize: 18)),
+                    onPressed: _onSwipeRight,
+                    icon: Icon(Icons.favorite, size: 28, color: Colors.pinkAccent),
+                    label: Text('Like', style: TextStyle(fontSize: 18)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.greenAccent,
                       foregroundColor: Colors.white,
@@ -244,111 +436,7 @@ class _SwipeViewState extends State<SwipeView> {
                 ],
               ),
             ),
-          // Optional: Add a small spacer if there are no more profiles but buttons were just hidden
-          if (_filteredProfiles.isNotEmpty && _currentIndex >= _filteredProfiles.length)
-            SizedBox(height: 80), // Placeholder for button area height
         ],
-      ),
-    );
-  }
-}
-
-// --- Basic Profile Card Widget (Example) ---
-class ProfileCard extends StatelessWidget {
-  final Xenoprofile profile;
-
-  const ProfileCard({Key? key, required this.profile}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), // Adjust margin
-      elevation: 5.0,
-      clipBehavior: Clip.antiAlias, // To ensure rounded corners clip the image
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15.0),
-      ),
-      child: SingleChildScrollView( // Make card content scrollable if it overflows
-        child: Padding(
-          padding: const EdgeInsets.all(1.0), // No padding for the card itself, image will fill
-          child: Column(
-            // mainAxisSize: MainAxisSize.min, // Can remove if using SingleChildScrollView and Expanded
-            crossAxisAlignment: CrossAxisAlignment.stretch, // Make children stretch
-            children: <Widget>[
-              if (profile.imageUrl.isNotEmpty)
-                ClipRRect( // Clip the image to have rounded top corners
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
-                  child: Image.asset(
-                    profile.imageUrl,
-                    height: 300, // Increased height
-                    width: double.infinity,
-                    fit: BoxFit.cover, // Cover ensures the image fills the bounds
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container( // Placeholder container
-                        height: 300,
-                        color: Colors.grey[300],
-                        child: Icon(Icons.broken_image, size: 100, color: Colors.grey[600]),
-                      );
-                    },
-                  ),
-                )
-              else // Placeholder if no image URL
-                Container(
-                  height: 300,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
-                  ),
-                  child: Icon(Icons.person_outline, size: 150, color: Colors.grey[400]),
-                ),
-              Padding(
-                padding: const EdgeInsets.all(16.0), // Padding for the text content
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${profile.name}, ${profile.earthage ?? 'N/A'}', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.public, size: 18, color: Colors.grey[700]),
-                        SizedBox(width: 6),
-                        Text('Species: ${profile.species}', style: Theme.of(context).textTheme.bodyLarge),
-                      ],
-                    ),
-                    SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.location_on_outlined, size: 18, color: Colors.grey[700]),
-                        SizedBox(width: 6),
-                        Text('Location: ${profile.location}', style: Theme.of(context).textTheme.bodyLarge),
-                      ],
-                    ),
-                    SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.search, size: 18, color: Colors.grey[700]),
-                        SizedBox(width: 6),
-                        Text('Looking for: ${profile.lookingfor}', style: Theme.of(context).textTheme.bodyLarge),
-                      ],
-                    ),
-                    SizedBox(height: 12),
-                    Text('Interests:', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 4),
-                    Wrap( // Use Wrap for interests if they can be many
-                      spacing: 6.0,
-                      runSpacing: 4.0,
-                      children: profile.interests.map((interest) => Chip(label: Text(interest))).toList(),
-                    ),
-                    SizedBox(height: 12),
-                    Text('Bio:', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 4),
-                    Text(profile.bio, style: Theme.of(context).textTheme.bodyMedium),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

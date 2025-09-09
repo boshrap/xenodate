@@ -1,7 +1,9 @@
 // JSON Data Model
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 class Xenoprofile {
-  final String uid; // Unique identifier
+  final String id; // Unique identifier
   final String name;
   final String surname;
   final int? earthage; // Changed to nullable int to match safe parsing
@@ -10,7 +12,7 @@ class Xenoprofile {
   final String likes;
   final String dislikes;
   final String imageUrl;
-  final String bio;
+  final String biography;
   final String species;
   final String subspecies;
   final String location;
@@ -20,7 +22,7 @@ class Xenoprofile {
   // Add other relevant fields like location, occupation, etc.
 
   Xenoprofile({
-    required this.uid,
+    required this.id,
     required this.surname,
     required this.name,
     this.earthage, // earthage is now nullable
@@ -29,7 +31,7 @@ class Xenoprofile {
     required this.likes,
     required this.dislikes,
     required this.imageUrl,
-    required this.bio,
+    required this.biography,
     required this.species,
     required this.subspecies,
     required this.location,
@@ -52,65 +54,74 @@ class Xenoprofile {
 
 // Factory constructor for creating a Profile from a Map (e.g., from a JSON file)
   factory Xenoprofile.fromJson(Map<String, dynamic> json) {
+    List<String> _parseInterests(dynamic value) {
+      if (value is String) {
+        return value.split(',').map((interest) => interest.trim()).toList();
+      }
+      // If it's somehow already a list (though unlikely if Firebase stores it as a string)
+      else if (value is List) {
+        return value.map((item) => item.toString()).toList();
+      }
+      return [];
+    }
+
     return Xenoprofile(
-      uid: json['uid'] as String? ?? '', // Handle potential null 'uid'
+      id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       surname: json['surname'] as String? ?? '',
-      earthage: _parseInt(json['earthage']), // Use safe parsing for earthage
+      earthage: _parseInt(json['earthage']),
       gender: json['gender'] as String? ?? '',
-      interests: List<String>.from(json['interests'] as List<dynamic>? ?? []),
-      likes: json['likes'] as String? ?? '',        // Corrected key to lowercase
-      dislikes: json['dislikes'] as String? ?? '',  // Corrected key to lowercase
+      interests: _parseInterests(json['interests']), // Parse string to List<String>
+      likes: json['likes'] as String? ?? '',
+      dislikes: json['dislikes'] as String? ?? '',
       imageUrl: json['imageUrl'] as String? ?? '',
-      bio: json['bio'] as String? ?? '',
+      biography: json['biography'] as String? ?? '',
       species: json['species'] as String? ?? '',
       subspecies: json['subspecies'] as String? ?? '',
       location: json['location'] as String? ?? '',
       lookingfor: json['lookingfor'] as String? ?? '',
-      orientation: json['orientation'] as String? ?? '', // Added orientation
-      redflags: json['redflags'] as String? ?? '',    // Corrected key to lowercase
+      orientation: json['orientation'] as String? ?? '',
+      redflags: json['redflags'] as String? ?? '',
     );
   }
   Map<String, dynamic> toJson() {
     return {
-      'uid': uid, // Added uid
+      'id': id,
       'name': name,
       'surname': surname,
-      'earthage': earthage, // Corrected key from 'age' to 'earthage'
+      'earthage': earthage,
       'gender': gender,
-      'interests': interests,
-      'likes': likes,        // Corrected key to lowercase
-      'dislikes': dislikes,  // Corrected key to lowercase
+      'interests': interests.join(','), // Convert List<String> to a comma-separated String
+      'likes': likes,
+      'dislikes': dislikes,
       'imageUrl': imageUrl,
-      'bio': bio,
+      'biography': biography,
       'species': species,
       'subspecies': subspecies,
       'location': location,
-      'lookingfor': lookingfor, // Added lookingfor
+      'lookingfor': lookingfor,
       'orientation': orientation,
-      'redflags': redflags,    // Corrected key to lowercase
+      'redflags': redflags,
     };
   }
 
   Map<String, dynamic> toMap() {
     return {
-      'uid': uid, // Added uid
+      'id': id,
       'name': name,
       'surname': surname,
-      'earthage': earthage, // Corrected key from 'age' to 'earthage'
+      'earthage': earthage,
       'gender': gender,
-      'interests': interests,
-      'likes': likes,        // Corrected key to lowercase
-      'dislikes': dislikes,  // Corrected key to lowercase
+      'interests': interests.join(','), // Convert List<String> to a comma-separated String
+      'likes': likes,
+      'dislikes': dislikes,
       'imageUrl': imageUrl,
-      'bio': bio,
+      'biography': biography,
       'species': species,
       'subspecies': subspecies,
       'location': location,
-      'lookingfor': lookingfor, // Added lookingfor
+      'lookingfor': lookingfor,
       'orientation': orientation,
-      'redflags': redflags,    // Corrected key to lowercase
+      'redflags': redflags,
     };
-
-
   }}

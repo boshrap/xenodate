@@ -9,8 +9,8 @@ class FilterCriteria {
   final String? gender;
   final String? species;
   final String? location;
-  final List<String>? interests;
-  final String? lookingFor; // Make sure this is present
+  final List<String>? interests; // Keep this as List<String> for filter input
+  final String? lookingFor;
 
   const FilterCriteria({
     this.minAge,
@@ -22,7 +22,6 @@ class FilterCriteria {
     this.lookingFor,
   });
 
-  // Factory constructor for an "empty" or default state
   factory FilterCriteria.empty() {
     return FilterCriteria(
       minAge: null,
@@ -32,54 +31,54 @@ class FilterCriteria {
     );
   }
 
-  // --- ADD THIS GETTER ---
   bool get isNotEmpty {
-    // Returns true if any of the filter criteria are set
     return minAge != null ||
         maxAge != null ||
         (species != null && species!.isNotEmpty) ||
         (interests != null && interests!.isNotEmpty);
-    // Add checks for other properties you might have
   }
 
-  // --- ADD THIS METHOD ---
   bool matches(Xenoprofile profile) {
-    // If a criterion is null or empty, it means "don't filter by this"
-    // So, we only check if the criterion IS set AND the profile doesn't match.
-
     if (profile.earthage == null) {
-      // If this filter has an age constraint, a profile with no age doesn't match
       if (minAge != null || maxAge != null) {
         return false;
       }
     } else {
-      // profile.earthage is not null here
-      if (minAge != null && profile.earthage! < minAge!) { // Use ! after null check
+      if (minAge != null && profile.earthage! < minAge!) {
         return false;
       }
-      if (maxAge != null && profile.earthage! > maxAge!) { // Use ! after null check
+      if (maxAge != null && profile.earthage! > maxAge!) {
         return false;
       }
     }
     if (species != null && species!.isNotEmpty && profile.species.toLowerCase() != species!.toLowerCase()) {
       return false;
     }
+
+// --- MODIFIED INTERESTS CHECK ---
     if (interests != null && interests!.isNotEmpty) {
-      // Check if the profile has at least one of the specified interests
+      if (profile.interests.isEmpty) { // If profile has no interests, it can't match.
+        return false;
+      }
+
+      // Convert profile interests to lowercase for case-insensitive comparison
+      List<String> profileInterestsLowercase = profile.interests.map((e) => e.toLowerCase()).toList();
+
       bool interestMatch = false;
-      for (String interest in interests!) {
-        if (profile.interests.map((i) => i.toLowerCase()).contains(interest.toLowerCase())) {
+      for (String filterInterest in interests!) { // Iterate through the filter's list of interests
+        if (profileInterestsLowercase.contains(filterInterest.toLowerCase())) {
           interestMatch = true;
-          break;
+          break; // Found a match, no need to check further
         }
       }
       if (!interestMatch) {
-        return false;
+        return false; // No common interest found
       }
     }
-    // Add checks for other properties
+    // --- END OF MODIFIED INTERESTS CHECK ---
 
-    return true; // If all checks pass, the profile matches
+
+    return true;
   }
 
   FilterCriteria copyWith({
@@ -109,13 +108,11 @@ class FilterCriteria {
     );
   }
 
-  // Optional: For debugging and the SnackBar message
   @override
   String toString() {
     return 'FilterCriteria(minAge: $minAge, maxAge: $maxAge, gender: $gender, species: $species, location: $location, interests: $interests, lookingFor: $lookingFor)';
   }
 
-  // Optional: For equality checking if needed
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -126,7 +123,7 @@ class FilterCriteria {
               gender == other.gender &&
               species == other.species &&
               location == other.location &&
-              listEquals(interests, other.interests) &&
+              listEquals(interests, other.interests) && // Keep listEquals here as FilterCriteria.interests is still a List
               lookingFor == other.lookingFor;
 
   @override
@@ -136,6 +133,6 @@ class FilterCriteria {
       gender.hashCode ^
       species.hashCode ^
       location.hashCode ^
-      interests.hashCode ^
+      interests.hashCode ^ // Keep .hashCode for List here
       lookingFor.hashCode;
 }

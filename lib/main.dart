@@ -4,8 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:xenodate/sigininview.dart';
 import 'firebase_options.dart';
 import 'package:xenodate/mainview.dart';
-import 'package:xenodate/tac.dart'; // Keep if used by MainView or SignInView
-// import 'package:xenodate/chat.dart'; // Keep if used by MainView or SignInView
+import 'package:xenodate/tac.dart';
+import 'package:xenodate/services/charserv.dart';
+import 'package:xenodate/services/matchesserv.dart';
+import 'package:provider/provider.dart';// Keep if used by MainView or SignInView
+import 'package:xenodate/services/xenoprofserv.dart';
+import 'package:xenodate/chatscreen2.dart'; // Keep if used by MainView or SignInView
+import 'package:firebase_ai/firebase_ai.dart';
 
 
 void main() async {
@@ -13,7 +18,20 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const XenoDateApp()); // Renamed to avoid conflict
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<CharacterService>( // Explicitly provide the type
+          create: (_) => CharacterService(),
+        ),
+        ChangeNotifierProvider(create: (_) => MatchService(),
+        ),
+        ChangeNotifierProvider<XenoprofileService>(create: (_) => XenoprofileService(),
+        ),// Add// Add other providers here if needed
+      ],
+      child: XenoDateApp(), // Assuming XenoDateApp is your main app widget
+    ),
+  ); // Renamed to avoid conflict
 }
 
 const String appTitle ="XenoDate: Meet your intergalactic match!";
@@ -95,9 +113,9 @@ class XDLogin extends StatelessWidget {
 
             ElevatedButton(
                 onPressed: () {
-                   Navigator.push(
-                   context,
-                       MaterialPageRoute(builder: (context) => Terms()), // Ensure Terms() is defined
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => Terms()), // Ensure Terms() is defined
                   );
                 },
                 child: Text ('Create Character / View Terms')),
@@ -133,6 +151,17 @@ class XDLogin extends StatelessWidget {
             //        print("Quick Chat button pressed");
             //     },
             //     child: Text('Quick Chat')),
+
+            // New Button for AIChatScreen
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AIChatScreen()),
+                );
+              },
+              child: const Text('Chat with AI'),
+            ),
           ],
         ),
       ),

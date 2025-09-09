@@ -1,7 +1,7 @@
 // lib/filterview.dart
 import 'package:flutter/material.dart';
 // Assuming Profile model might be used for context, but not directly in this file for filter logic
-// import 'package:xenodate/models/xenoprofile.dart';
+import 'package:xenodate/models/xenoprofile.dart';
 import 'package:xenodate/models/filter.dart'; // Import your FilterCriteria model
 
 class Filter extends StatefulWidget {
@@ -23,15 +23,16 @@ class _FilterState extends State<Filter> {
   late FilterCriteria _currentFilters;
 
   // Available options
-  final List<String> _availableGenders = ['Any', 'Male', 'Female', 'Non-binary'];
+  final List<String> _availableGenders = ['Any', 'Male', 'Female', 'Neutral'];
   final List<String> _availableInterests = [
-    'Conquering galaxies', 'Tea', 'Space pilot', 'Martial arts', 'Quantum physics',
-    'Knitting nebulae', 'Heroism', 'Justice', 'Shiny boots', 'Astronomy',
-    'Ancient languages', 'Exploring ruins'
+    'Academic', 'Adaptation', 'Adventure', 'Arts', 'Communication', 'Craft',
+    'Creative', 'Culture', 'Education', 'Entertainment', 'Fitness', 'Hobby',
+    'Intellectual', 'Lifestyle', 'Personal', 'Professional', 'Recreation',
+    'Science', 'Social', 'Spiritual', 'Technology'
   ];
   final List<String> _availableSpecies = [
-    'Any', 'Earthian', 'Novuman', 'Farrman', 'Merkind', 'Mammalkind',
-    'Snakekind', 'Featherfolk', 'Jellykind'
+    'Any', 'Human', 'Keplian', 'Matobun',
+    'Kirtaki', 'Aviman', 'Teagardener'
   ];
   final List<String> _availableLocations = [
     'Any', 'Earth', 'Moon & NECs', 'Mars & FECs', 'Keplia', 'Matobo',
@@ -182,6 +183,7 @@ class _FilterState extends State<Filter> {
               });
             },
           ),
+
 
           // --- Interests Example (Multi-select Chips) ---
           Text('Interests:'),
