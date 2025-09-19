@@ -1,6 +1,6 @@
-# xenodate
+# Xenodate
 
-a datin' app
+A datin' app (for aliens)
 
 ## Getting Started
 
