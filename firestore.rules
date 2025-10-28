@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read and write their own characters
+    match /users/{userId}/characters/{charId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /users/{userId}/matches/{matchId} {
+      allow read, write, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    match /xenoprofiles/{xenoprofileId} {
+      allow read: if request.auth != null;
+    }
+    
+    // Rule for the 'chats' collection
+    match /users/{userId}/chats/{chatId} {
+      allow read, write, update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // Corrected rule for the 'messages' subcollection
+      // The path is now relative to the parent chat document
+      match /messages/{messageId} {
+        allow read, write, update, delete: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    // Rules for the Worldbook RAG db
+		match /xenoworldbook/{xenoworldbook} {
+    	allow read, write, update, delete: if request.auth != null;
+    }
+    // Add rules for other collections as needed
+  }
+}
