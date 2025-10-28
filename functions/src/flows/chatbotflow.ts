@@ -1,7 +1,7 @@
 import {genkit, z} from 'genkit';
 import {onCallGenkit} from "firebase-functions/https";
 import {enableFirebaseTelemetry} from '@genkit-ai/firebase';
-import {googleAI} from "@genkit-ai/googleai"; // Fixed import
+import {googleAI} from "@genkit-ai/google-genai";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -9,9 +9,9 @@ interface XenoprofileFirestoreData {
   id: string;
   name: string;
   surname: string;
-  earthage?: number | null; // Matches Dart's nullable int
+  earthage?: number | null;
   gender: string;
-  interests: string; // Stored as a comma-separated string in Firestore
+  interests: string;
   likes: string;
   dislikes: string;
   imageUrl: string;
@@ -22,41 +22,34 @@ interface XenoprofileFirestoreData {
   lookingfor: string;
   orientation: string;
   redflags: string;
-  // Add other fields if they are stored in Firestore and relevant for the persona
 }
 enableFirebaseTelemetry();
 const apiKey = defineSecret("GOOGLE_GENAI_API_KEY");
 
-// Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-// Initialize Genkit with Firebase integration
 const ai = genkit({
   plugins: [
     googleAI(),
   ],
-  logLevel: 'debug',
-  enableTracingAndMetrics: true,
+
 });
 
-// Define the input schema for your flow, matching what Flutter sends
 const ChatbotInputSchema = z.object({
   xenoprofileId: z.string(),
   userMessage: z.string(),
   history: z.array(z.object({
-    role: z.enum(['user', 'model']), // 'user' for user messages, 'model' for AI messages
+    role: z.enum(['user', 'model']),
     text: z.string(),
-  })).optional(), // Make history optional, though your Flutter code sends it
+  })).optional(),
 });
 
-// Define the output schema for your flow, matching what Flutter expects
 const ChatbotOutputSchema = z.object({
   reply: z.string(),
 });
 
-// Define the Genkit Flow
 async function getBotPersona(xenoprofileId: string): Promise<{ name: string; instructions: string }> {
   const firestore = getFirestore();
 
@@ -67,12 +60,9 @@ async function getBotPersona(xenoprofileId: string): Promise<{ name: string; ins
       return { name: "Default Bot", instructions: "Be helpful and concise." };
     }
 
-    // It's good practice to cast the data to your defined interface for type safety
     const data = doc.data() as XenoprofileFirestoreData | undefined;
 
-    // Validate the fetched data
     if (data && typeof data.name === 'string' && typeof data.biography === 'string') {
-      // Construct more detailed instructions based on the Xenoprofile data
       let instructions = `You are ${data.name} ${data.surname || ''}. `;
       instructions += `Your biography states: "${data.biography}". `;
       if (data.species) instructions += `You are a ${data.species}`;
@@ -81,7 +71,6 @@ async function getBotPersona(xenoprofileId: string): Promise<{ name: string; ins
       if (data.gender) instructions += `Your gender is ${data.gender}. `;
       if (data.location) instructions += `You are currently located in ${data.location}. `;
 
-      // Parse interests if they are relevant for the persona
       const interestsArray = data.interests ? data.interests.split(',').map(i => i.trim()) : [];
       if (interestsArray.length > 0) {
         instructions += `You are interested in ${interestsArray.join(', ')}. `;
@@ -93,11 +82,10 @@ async function getBotPersona(xenoprofileId: string): Promise<{ name: string; ins
       if (data.orientation) instructions += `Your orientation is ${data.orientation}. `;
       if (data.redflags) instructions += `Some red flags for you are: ${data.redflags}. `;
 
-      // Add a general instruction
       instructions += "Engage in conversation based on these characteristics. Behave like this character.";
 
       return {
-        name: `${data.name} ${data.surname || ''}`.trim(), // Combine name and surname for the bot's display name
+        name: `${data.name} ${data.surname || ''}`.trim(),
         instructions: instructions.trim(),
       };
     } else {
@@ -106,14 +94,13 @@ async function getBotPersona(xenoprofileId: string): Promise<{ name: string; ins
     }
   } catch (error) {
     console.error(`Error fetching xenoprofile '${xenoprofileId}':`, error);
-    // Fallback to default persona in case of other errors during fetch
     return { name: "Default Bot", instructions: "Be helpful and concise." };
   }
 }
 
 export const chatbotFlow = ai.defineFlow(
   {
-    name: 'chatbotFlow', // This name will be used for the Firebase Function
+    name: 'chatbotFlow',
     inputSchema: ChatbotInputSchema,
     outputSchema: ChatbotOutputSchema,
   },
@@ -125,19 +112,29 @@ export const chatbotFlow = ai.defineFlow(
       return { reply: "I didn't receive a message. Could you please try again?" };
     }
 
-    if (userMessage.length > 4000) { // Reasonable limit
+    if (userMessage.length > 4000) {
       return { reply: "Your message is too long. Please try a shorter message." };
     }
     const botPersona = await getBotPersona(xenoprofileId);
 
     const systemPrompt = `You are ${botPersona.name}. ${botPersona.instructions}`;
 
-    const messages = [];
+    // Define the expected message type for Genkit's generate function
+    interface GenkitMessagePart {
+      text: string;
+    }
+
+    interface GenkitMessage {
+      role: 'user' | 'model' | 'system' | 'tool'; // Explicitly define allowed roles as per Genkit's expectation
+      content: GenkitMessagePart[];
+    }
+
+    const messages: GenkitMessage[] = []; // Explicitly type the array
 
     if (history && history.length > 0) {
       history.forEach(histMessage => {
         messages.push({
-          role: histMessage.role === 'user' ? 'user' : 'model', // Explicit role mapping
+          role: histMessage.role, // This will be 'user' or 'model', which is compatible
           content: [{ text: histMessage.text }],
         });
       });
@@ -148,12 +145,11 @@ export const chatbotFlow = ai.defineFlow(
       content: [{ text: userMessage }],
     });
 
-    // 3. Call the Generative Model
     try {
       const response = await ai.generate({
         model: googleAI.model('gemini-2.0-flash'),
-        messages: messages,
-        system: systemPrompt, // Fixed: use 'system' instead of 'systemInstruction'
+        messages: messages, // Now the 'messages' array has the correct type
+        system: systemPrompt,
         config: {
           temperature: 0.7,
           maxOutputTokens: 500,
@@ -173,22 +169,11 @@ export const chatbotFlow = ai.defineFlow(
 
     } catch (error) {
       console.error('Error calling language model:', error);
-      // It's good practice to provide a graceful fallback or error message
       return { reply: "Sorry, I encountered an error. Please try again." };
     }
   }
 );
 
 export const chatbot = onCallGenkit({
-  // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
-  // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions
-  // enforceAppCheck: true,
-
-  // authPolicy can be any callback that accepts an AuthData (a uid and tokens dictionary) and the
-  // request data. The isSignedIn() and hasClaim() helpers can be used to simplify. The following
-  // will require the user to have the email_verified claim, for example.
-  // authPolicy: hasClaim("email_verified"),
-
-  // Grant access to the API key to this function:
   secrets: [apiKey],
 }, chatbotFlow);

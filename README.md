@@ -3,6 +3,14 @@
 A datin' app (for aliens)
 
 ## Getting Started
+wanna run it in android studio from github? remember: 
+
+* Delete android/web/windows/linux folders
+* Delete .idea folder
+* flutter clean
+* flutter create .
+* firebase init (do genkit, skip functions)
+* flutter pub get
 
 This project is a starting point for a Flutter application.
 

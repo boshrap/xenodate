@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart'; // Add this import
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart'; // Import Provider
+import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 
-// Assuming these are your service files - adjust paths as needed
 import 'package:xenodate/services/charserv.dart';
 import 'package:xenodate/services/xenoprofserv.dart';
 import 'dart:async';
-import 'dart:convert'; // For jsonEncode and jsonDecode
-import 'package:http/http.dart' as http; // HTTP package
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class AIChatScreen extends StatefulWidget {
   final String chatId;
@@ -34,12 +34,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   List<Map<String, dynamic>> _messages = [];
 
-  // State variables for fetched names
-  String? _characterName; // USER's Name
-  String? _xenoprofileDisplayName; // BOT's Name
+  String? _characterName;
+  String? _xenoprofileDisplayName;
   bool _isLoadingNames = true;
   late XenoprofileService _xenoprofileService;
   late CharacterService _characterService;
+
+  String? _conversationId; // This will now be loaded/saved
+  bool _isLoadingConversationId = true; // New loading state
 
   @override
   void initState() {
@@ -47,9 +49,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
     final currentUser = _auth.currentUser;
 
     if (currentUser == null) {
-      // Handle user not logged in
       setState(() {
         _isLoadingNames = false;
+        _isLoadingConversationId = false; // Set this too
       });
       return;
     }
@@ -58,7 +60,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
     print("Character ID: ${widget.characterId}");
     print("Xenoprofile ID: ${widget.xenoprofileId}");
 
-    _loadMessagesFromFirestore();
+    // Load or create the conversation ID before loading messages
+    _loadOrCreateConversationId().then((_) {
+      _loadMessagesFromFirestore();
+    });
   }
 
   @override
@@ -69,25 +74,71 @@ class _AIChatScreenState extends State<AIChatScreen> {
     _fetchNames();
   }
 
+  // --- NEW FUNCTION: Load or Create Conversation ID ---
+  Future<void> _loadOrCreateConversationId() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          _isLoadingConversationId = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      // Reference to the chat document itself to store its associated conversation ID
+      final chatDocRef = _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('chats')
+          .doc(widget.chatId);
+
+      final chatDoc = await chatDocRef.get();
+
+      if (chatDoc.exists && chatDoc.data() != null && chatDoc.data()!['conversationId'] != null) {
+        _conversationId = chatDoc.data()!['conversationId'] as String;
+        print("Loaded existing Conversation ID: $_conversationId");
+      } else {
+        // Generate a new ID if it doesn't exist, and save it to the chat document
+        _conversationId = const Uuid().v4();
+        await chatDocRef.set(
+          {'conversationId': _conversationId},
+          SetOptions(merge: true), // Merge to avoid overwriting other chat document data
+        );
+        print("Generated and saved new Conversation ID: $_conversationId");
+      }
+    } catch (e) {
+      print("Error loading/creating conversation ID: $e");
+      // Fallback: Generate a temporary ID, but this won't persist
+      _conversationId = const Uuid().v4();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingConversationId = false;
+        });
+      }
+    }
+  }
+  // --- END NEW FUNCTION ---
+
   Future<void> _fetchNames() async {
     setState(() {
       _isLoadingNames = true;
     });
     try {
-      // Fetch USER's name using characterId
-      // Assuming _characterService.getCharacterName exists and takes characterId
-      // This might be fetching the user's profile name based on widget.characterId
-      final _characterName = await _characterService.getSelectedCharacter(widget.characterId);
-      if (_characterName != null) {
-        _xenoprofileDisplayName = "User"; // Fallback for Bot's name
+      final selectedCharacter = await _characterService.getSelectedCharacter(widget.characterId);
+      if (selectedCharacter != null) {
+        _characterName = selectedCharacter.name;
+      } else {
+        _characterName = "User";
       }
 
-      // Fetch BOT's name using xenoprofileId
       final xenoprofile = await _xenoprofileService.getXenoprofileById(widget.xenoprofileId);
       if (xenoprofile != null) {
         _xenoprofileDisplayName = "${xenoprofile.name} ${xenoprofile.surname}";
       } else {
-        _xenoprofileDisplayName = "Bot"; // Fallback for Bot's name
+        _xenoprofileDisplayName = "Bot";
       }
 
     } catch (e) {
@@ -114,9 +165,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   void _loadMessagesFromFirestore() async {
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null || _conversationId == null) return; // Wait for conversationId
 
+    // You might want to filter these messages by conversationId if a chat document
+    // could contain messages from multiple "logical" conversations over time,
+    // though typically the chatId itself implies a unique conversation.
     _getChatMessagesCollection(user.uid)
+        .where('conversationId', isEqualTo: _conversationId) // Add this filter
         .orderBy('timestamp')
         .snapshots()
         .listen((snapshot) {
@@ -136,15 +191,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
     String receiverIdValue;
 
     if (isUserMessage) {
-      // Current user is sending the message
-      senderDisplayName = _characterName ?? "User"; // USER's name
-      senderIdValue = widget.characterId;           // USER's ID
-      receiverIdValue = widget.xenoprofileId;       // BOT's ID
+      senderDisplayName = _characterName ?? "User";
+      senderIdValue = widget.characterId;
+      receiverIdValue = widget.xenoprofileId;
     } else {
-      // Bot is sending the message
-      senderDisplayName = _xenoprofileDisplayName ?? "Bot"; // BOT's name
-      senderIdValue = widget.xenoprofileId;                 // BOT's ID
-      receiverIdValue = widget.characterId;                 // USER's ID (the recipient)
+      senderDisplayName = _xenoprofileDisplayName ?? "Bot";
+      senderIdValue = widget.xenoprofileId;
+      receiverIdValue = widget.characterId;
     }
 
     await _getChatMessagesCollection(chatDocumentOwnerUserId).add({
@@ -154,13 +207,15 @@ class _AIChatScreenState extends State<AIChatScreen> {
       'timestamp': FieldValue.serverTimestamp(),
       'senderId': senderIdValue,
       'receiverId': receiverIdValue,
+      'conversationId': _conversationId, // Still save for local display context
     });
   }
 
 
   Future<void> _sendMessageToFlow(String text) async {
     final currentUserAuth = _auth.currentUser;
-    if (currentUserAuth == null || text.trim().isEmpty) return;
+    // Ensure _conversationId is loaded before sending
+    if (currentUserAuth == null || text.trim().isEmpty || _conversationId == null) return;
 
     final userDisplayName = _characterName ?? "You";
 
@@ -171,6 +226,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       'senderName': userDisplayName,
       'senderId': widget.characterId,
       'receiverId': widget.xenoprofileId,
+      'conversationId': _conversationId,
     };
     if (mounted) {
       setState(() {
@@ -180,33 +236,17 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
     await _saveMessageToFirestore(currentUserAuth.uid, text, true);
 
-    // Prepare recent messages for history
-    const int historyLength = 5; // Or configurable
-    final List<Map<String, String>> messageHistoryForFlow = _messages
-        .take(historyLength) // Take last N messages
-        .map((msg) => {
-      'role': (msg['isUser'] as bool? ?? false) ? 'user' : 'model',
-      'text': msg['text'] as String? ?? '',
-    })
-        .toList();
-
-    // --- CALL GENKIT FLOW ---
     try {
-      // Get an instance of Firebase Functions
       FirebaseFunctions functions = FirebaseFunctions.instance;
-      // If your function is in a specific region, specify it:
-      // FirebaseFunctions functions = FirebaseFunctions.instanceFor(region: 'your-region');
-
-      // Prepare the data to send to the function
-      final HttpsCallable callable = functions.httpsCallable('chatbot'); // 'chatbot' is the name of your deployed Genkit flow
+      final HttpsCallable callable = functions.httpsCallable('chatbot');
 
       final response = await callable.call(<String, dynamic>{
         'xenoprofileId': widget.xenoprofileId,
         'userMessage': text,
-        'history': messageHistoryForFlow, // Add history to the call
+        'conversationId': _conversationId,
       });
 
-      final responseData = response.data as Map<String, dynamic>?; // The 'data' field contains the function's response
+      final responseData = response.data as Map<String, dynamic>?;
 
       if (responseData != null) {
         final aiReply = responseData['reply'] as String?;
@@ -221,6 +261,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             'senderName': aiSenderName,
             'senderId': widget.xenoprofileId,
             'receiverId': widget.characterId,
+            'conversationId': _conversationId,
           };
           if (mounted) {
             setState(() {
@@ -245,7 +286,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
   }
 
-  // Helper to show an error dialog (optional)
   void _showErrorDialog(String message) {
     if (!mounted) return;
     showDialog(
@@ -265,23 +305,20 @@ class _AIChatScreenState extends State<AIChatScreen> {
     );
   }
 
-
   @override
   void dispose() {
-    // any listeners or controllers should be disposed here
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentUserAuth = _auth.currentUser; // Logged-in user
+    final currentUserAuth = _auth.currentUser;
 
-    // AppBar title should be the BOT's name
     String appBarTitle;
-    if (_isLoadingNames) {
+    if (_isLoadingNames || _isLoadingConversationId) { // Check new loading state
       appBarTitle = 'Loading...';
     } else {
-      appBarTitle = _xenoprofileDisplayName ?? "Bot"; // BOT's name
+      appBarTitle = _xenoprofileDisplayName ?? "Bot";
     }
 
     if (currentUserAuth == null) {
@@ -291,10 +328,17 @@ class _AIChatScreenState extends State<AIChatScreen> {
       );
     }
 
+    // Show a loading indicator until conversationId is ready
+    if (_isLoadingConversationId) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Loading Chat...', style: GoogleFonts.poppins())),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Chat with $appBarTitle', style: GoogleFonts.poppins()), // Chat with BOT
+        title: Text('Chat with $appBarTitle', style: GoogleFonts.poppins()),
       ),
       body: Column(
         children: [
@@ -304,13 +348,12 @@ class _AIChatScreenState extends State<AIChatScreen> {
               itemBuilder: (context, index) {
                 final message = _messages[index];
                 final bool isUserMsg = message['senderId'] == widget.characterId;
-                // Alternatively, use message['isUser'] if it's reliably set based on senderId logic during save/load
 
                 return _buildMessageBubble(
-                  isUserMsg, // True if the sender is the USER (characterId)
+                  isUserMsg,
                   message['text'] as String,
                   (message['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                  message['senderName'] as String, // This will be _characterName for user, _xenoprofileDisplayName for bot
+                  message['senderName'] as String,
                 );
               },
             ),
@@ -325,8 +368,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   Widget _buildMessageBubble(bool isUserMessage, String messageText, DateTime timestamp, String senderDisplayName) {
-    // isUserMessage is true if it's from the current user (characterId)
-    // senderDisplayName will be the name of who sent it (_characterName for user, _xenoprofileDisplayName for bot)
     return Align(
       alignment: isUserMessage ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -339,17 +380,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
         child: Column(
           crossAxisAlignment: isUserMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // Show sender's name only for the OTHER party (the Bot)
             if (!isUserMessage)
               Text(
-                senderDisplayName, // This will be the BOT's name (_xenoprofileDisplayName)
+                senderDisplayName,
                 style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.blue.shade800),
               ),
-            // If it IS a user message, and you want to show the user's name (e.g. in a group chat)
-            // you could add:
-            // if (isUserMessage) Text(senderDisplayName, style: ... ),
-            // But for a 1-on-1 chat, it's often omitted for the user's own messages.
-
             Text(messageText, style: GoogleFonts.poppins(color: isUserMessage ? Colors.white : Colors.black)),
             const SizedBox(height: 4),
             Text(
@@ -364,7 +399,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Widget _buildMessageInputArea(void Function(String) onSend) {
     final TextEditingController controller = TextEditingController();
-    // Hint text should refer to the BOT
     final hintName = _xenoprofileDisplayName ?? "Bot";
     return Container(
       padding: const EdgeInsets.all(8.0),
@@ -374,7 +408,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             child: TextField(
               controller: controller,
               decoration: InputDecoration(
-                  hintText: 'Message $hintName...', // Message the BOT
+                  hintText: 'Message $hintName...',
                   hintStyle: GoogleFonts.poppins()),
               style: GoogleFonts.poppins(),
               onSubmitted: (text) {
