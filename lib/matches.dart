@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:xenodate/models/match.dart'; // Your Match model
 import 'package:xenodate/services/matchesserv.dart'; // Import your MatchService
+import 'package:xenodate/services/xenoprofserv.dart'; // Import your XenoprofileService
 import 'package:xenodate/xenoprofile.dart';
+import 'package:xenodate/services/charserv.dart'; // Import CharacterService
 
 import 'chatscreen3.dart';
 
@@ -18,15 +20,19 @@ class _XenoMatchesState extends State<XenoMatches> {
   // --- Helper functions to get data not directly in Match model ---
   // These would ideally fetch data from another service or local cache
   // based on characterId or xenoProfileId.
-  String _getCharacterName(Match match, BuildContext context) {
-    String profileIdSnippet = match.xenoProfileId;
-    if (match.xenoProfileId.length > 6) {
-      profileIdSnippet = match.xenoProfileId.substring(0, 6) + "...";
-    } else {
-      profileIdSnippet = match.xenoProfileId; // Or however you want to display shorter IDs
-    }
+  Future<String> _getCharacterName(Match match, BuildContext context) async {
+    final xenoprofileService = Provider.of<XenoprofileService>(context, listen: false);
+    final xenoprofile = await xenoprofileService.getXenoprofileById(match.xenoProfileId);
 
-    return "Character (Xeno ID: $profileIdSnippet)";
+    if (xenoprofile != null) {
+      return "${xenoprofile.name} ${xenoprofile.surname}";
+    } else {
+      String profileIdSnippet = match.xenoProfileId;
+      if (match.xenoProfileId.length > 6) {
+        profileIdSnippet = match.xenoProfileId.substring(0, 6) + "...";
+      }
+      return "Character (ID: $profileIdSnippet)";
+    }
   }
 
   String _getCharacterPhotoUrl(Match match, BuildContext context) {
@@ -47,8 +53,10 @@ class _XenoMatchesState extends State<XenoMatches> {
       // You might want to show a confirmation dialog first
       await matchService.setMatchUnmatched(match.id, true);
       // Optionally, show a success message
+      // Note: This line needs to be updated to await _getCharacterName
+      final characterName = await _getCharacterName(match, context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_getCharacterName(match, context)} unmatched.')),
+        SnackBar(content: Text('$characterName unmatched.')),
       );
     } catch (e) {
       print("Error unmatching: $e");
@@ -69,13 +77,20 @@ class _XenoMatchesState extends State<XenoMatches> {
 
   @override
   Widget build(BuildContext context) {
-    // Access the MatchService
+    // Access the MatchService and CharacterService
     final matchService = Provider.of<MatchService>(context, listen: false);
+    final characterService = Provider.of<CharacterService>(context); // Listen to changes
+
+    final String? selectedCharacterId = characterService.selectedCharacterId;
+
+    if (selectedCharacterId == null) {
+      return Center(child: Text('Please select a character to view matches.'));
+    }
 
     return StreamBuilder<List<Match>>(
       // Listen to the stream of matches from the service
       // You can pass a characterId here if you want to filter by character
-      stream: matchService.getMatchesStream(),
+      stream: matchService.getMatchesStream(characterId: selectedCharacterId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Center(child: CircularProgressIndicator());
@@ -96,7 +111,7 @@ class _XenoMatchesState extends State<XenoMatches> {
 
         if (displayedMatches.isEmpty) {
           return Center(
-            child: Text('No visible matches found.'),
+            child: Text('No visible matches found for the selected character.'),
           );
         }
 
@@ -104,7 +119,6 @@ class _XenoMatchesState extends State<XenoMatches> {
           itemCount: displayedMatches.length,
           itemBuilder: (context, index) {
             final match = displayedMatches[index];
-            final characterName = _getCharacterName(match, context);
             final characterPhotoUrl = _getCharacterPhotoUrl(match, context);
             final daysAgo = _getDaysAgo(match.matchedAt);
 
@@ -123,7 +137,7 @@ class _XenoMatchesState extends State<XenoMatches> {
                             width: 100,
                             height: 100,
                             fit: BoxFit.cover,
-                            semanticLabel: '$characterName photo',
+                            semanticLabel: 'Character photo', // Updated semantic label
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
                                 width: 100,
@@ -162,9 +176,20 @@ class _XenoMatchesState extends State<XenoMatches> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
-                          Text(
-                            characterName,
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          FutureBuilder<String>(
+                            future: _getCharacterName(match, context),
+                            builder: (context, nameSnapshot) {
+                              if (nameSnapshot.connectionState == ConnectionState.waiting) {
+                                return CircularProgressIndicator();
+                              } else if (nameSnapshot.hasError) {
+                                return Text('Error: ${nameSnapshot.error}');
+                              } else {
+                                return Text(
+                                  nameSnapshot.data ?? 'Unknown Character',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                );
+                              }
+                            },
                           ),
                           SizedBox(height: 4),
                           Text('You matched $daysAgo ${daysAgo == 1 ? "day" : "days"} ago.'),

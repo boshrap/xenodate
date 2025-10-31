@@ -12,12 +12,18 @@ import 'package:xenodate/services/xenoprofserv.dart';
 import 'package:xenodate/chatscreen2.dart'; // Keep if used by MainView or SignInView
 import 'package:firebase_ai/firebase_ai.dart';
 
+// --- NEW IMPORTS FOR EMULATOR SETTINGS ---
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart'; // For kDebugMode
+// ------------------------------------------
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   runApp(
     MultiProvider(
       providers: [
