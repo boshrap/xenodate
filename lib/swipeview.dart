@@ -22,7 +22,7 @@ class SwipeViewWithMatching extends StatefulWidget {
   _SwipeViewWithMatchingState createState() => _SwipeViewWithMatchingState();
 }
 
-class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
+class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> with TickerProviderStateMixin {
   List<Xenoprofile> _allProfiles = [];
   List<Xenoprofile> _filteredProfiles = [];
   ValueNotifier<FilterCriteria> _filterCriteriaNotifier = ValueNotifier(FilterCriteria.empty());
@@ -38,6 +38,14 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
   late CharacterService _characterService;
   late XenoprofileService _xenoprofileService;
 
+  // Animation variables for swipe
+  late AnimationController _animationController;
+  late Animation<Offset> _cardAnimation;
+  double _dragX = 0.0;
+  double _dragY = 0.0;
+  double _rotation = 0.0;
+  double _rotationAngle = 0.0;
+
 
   @override
   void initState() {
@@ -45,6 +53,29 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
     _characterService = Provider.of<CharacterService>(context, listen: false);
     _xenoprofileService = Provider.of<XenoprofileService>(context, listen: false);
     _characterService.addListener(_onCharacterServiceChange);
+
+    _animationController = AnimationController(
+      duration: Duration(milliseconds: 300),
+      vsync: this,
+    )
+      ..addListener(() {
+        setState(() {
+          _dragX = _cardAnimation.value.dx;
+          _dragY = _cardAnimation.value.dy;
+          _rotation = _cardAnimation.value.dx * _rotationAngle; // Adjust rotation based on drag
+        });
+      })
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          // Animation finished, reset for next card if it was a swipe out
+          if (_dragX.abs() > 100) { // Arbitrary threshold for a full swipe
+            _moveToNextProfile();
+            _resetCardPosition();
+          } else {
+            _resetCardPosition(); // Snap back if not fully swiped
+          }
+        }
+      });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
@@ -57,6 +88,7 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
     _filterCriteriaNotifier.removeListener(_applyFiltersToList);
     _filterCriteriaNotifier.dispose();
     _characterService.removeListener(_onCharacterServiceChange);
+    _animationController.dispose(); // Dispose the animation controller
     super.dispose();
   }
 
@@ -76,9 +108,6 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
 
       if (_currentUserCharacter == null) {
         if (mounted) {
-          // It seems noChar2NewChar is a custom function you have.
-          // Make sure it handles navigation or UI changes appropriately.
-          // await noChar2NewChar(context);
           print("No character selected, prompting for creation/selection.");
           if (mounted) {
             setState(() { _isLoading = false; });
@@ -167,22 +196,51 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
         return true;
       }).toList();
 
-      // Sort by compatibility score (highest first)
-      if (_currentUserCharacter != null) {
-        _filteredProfiles.sort((a, b) {
-          double scoreA = _compatibilityScores[a.id] ?? 0.0;
-          double scoreB = _compatibilityScores[b.id] ?? 0.0;
-          return scoreB.compareTo(scoreA); // Highest score first
-        });
+      if (_filteredProfiles.isNotEmpty && _currentUserCharacter != null) {
+        List<Xenoprofile> tempProfiles = List.from(_filteredProfiles);
+        List<Xenoprofile> newShuffledProfiles = [];
+        Random random = Random();
+
+        while (tempProfiles.isNotEmpty) {
+          double totalWeight = 0.0;
+          for (Xenoprofile p in tempProfiles) {
+            totalWeight += (_compatibilityScores[p.id] ?? 0.0) + 0.1; // Add a base weight to ensure all profiles have a chance
+          }
+
+          double randValue = random.nextDouble() * totalWeight;
+          double currentWeightSum = 0.0;
+          int selectedIndex = -1;
+
+          for (int i = 0; i < tempProfiles.length; i++) {
+            currentWeightSum += (_compatibilityScores[tempProfiles[i].id] ?? 0.0) + 0.1;
+            if (currentWeightSum >= randValue) {
+              selectedIndex = i;
+              break;
+            }
+          }
+          
+          if (selectedIndex == -1 && tempProfiles.isNotEmpty) {
+            selectedIndex = random.nextInt(tempProfiles.length); // Fallback to random if weighted selection fails
+          } else if (selectedIndex == -1 && tempProfiles.isEmpty) {
+            break;
+          }
+
+          Xenoprofile selectedProfile = tempProfiles[selectedIndex];
+          newShuffledProfiles.add(selectedProfile);
+          tempProfiles.removeAt(selectedIndex);
+        }
+        _filteredProfiles = newShuffledProfiles;
+        print("Profiles weighted randomly shuffled after filtering.");
+      } else if (_filteredProfiles.isNotEmpty && _currentUserCharacter == null) {
+        // If no user character, compatibility scores are not relevant for sorting.
+        // Still apply a simple shuffle for randomness.
+        _filteredProfiles.shuffle(Random());
+        print("Profiles shuffled randomly (no user character for compatibility).");
       }
 
-      // Shuffle the filtered and sorted list
-      if (_filteredProfiles.isNotEmpty) {
-        _filteredProfiles.shuffle(Random()); // Use dart:math's Random
-        print("Profiles shuffled after filtering/sorting.");
-      }
 
       _currentIndex = 0; // Reset index to the start of the shuffled list
+      _resetCardPosition(); // Reset card position when filters are applied
     });
   }
 
@@ -205,6 +263,68 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
         );
       },
     );
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragX += details.delta.dx;
+      _dragY += details.delta.dy;
+      // Calculate rotation based on horizontal drag
+      final screenWidth = MediaQuery.of(context).size.width;
+      _rotation = (_dragX / screenWidth * 0.5); // Adjust multiplier for desired rotation
+    });
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final swipeThreshold = screenWidth * 0.4; // 40% of screen width
+
+    if (_dragX.abs() > swipeThreshold) {
+      // Determine if it's a left or right swipe
+      if (_dragX < 0) {
+        _performSwipeAnimation(Alignment.bottomLeft, () => _onSwipeLeft());
+      } else {
+        _performSwipeAnimation(Alignment.bottomRight, () => _onSwipeRight());
+      }
+    } else {
+      // Snap back to original position
+      _resetCardPosition();
+    }
+  }
+
+  void _performSwipeAnimation(Alignment endAlignment, VoidCallback onComplete) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    _cardAnimation = Tween<Offset>(
+      begin: Offset(_dragX, _dragY),
+      end: Offset(
+        endAlignment.x * 2 * screenWidth, // Swipe far off screen
+        endAlignment.y * 2 * screenHeight, // Swipe far off screen
+      ),
+    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
+
+    _animationController.forward().then((_) {
+      onComplete();
+      _resetCardPosition(animate: false); // Reset immediately without animation after swipe completes
+    });
+  }
+
+
+  void _resetCardPosition({bool animate = true}) {
+    if (animate) {
+      _cardAnimation = Tween<Offset>(
+        begin: Offset(_dragX, _dragY),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
+      _animationController.forward(from: 0.0);
+    } else {
+      setState(() {
+        _dragX = 0.0;
+        _dragY = 0.0;
+        _rotation = 0.0;
+      });
+    }
   }
 
   void _onSwipeLeft() async {
@@ -243,6 +363,7 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
     setState(() {
       if (_currentIndex < _filteredProfiles.length - 1) {
         _currentIndex++;
+        _resetCardPosition(animate: false); // Immediately reset for the new card
       } else {
         // Optionally, inform the user they've reached the end of the shuffled list for the current filters
         ScaffoldMessenger.of(context).showSnackBar(
@@ -378,17 +499,92 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
             child: Center(
               child: (_currentIndex < _filteredProfiles.length)
                   ? GestureDetector(
-                onHorizontalDragEnd: (details) {
-                  if (details.primaryVelocity == null) return;
-                  if (details.primaryVelocity! < 0) {
-                    _onSwipeLeft();
-                  } else if (details.primaryVelocity! > 0) {
-                    _onSwipeRight();
-                  }
-                },
-                child: ProfileCard(
-                  profile: _filteredProfiles[_currentIndex],
-                  compatibilityScore: _compatibilityScores[_filteredProfiles[_currentIndex].id] ?? 0.0,
+                onPanUpdate: _onPanUpdate,
+                onPanEnd: _onPanEnd,
+                child: Stack(
+                  children: [
+                    // Next card (optional, for subtle peek)
+                    if (_currentIndex + 1 < _filteredProfiles.length)
+                      Align(
+                        alignment: Alignment.center,
+                        child: Transform.scale(
+                          scale: 0.9, // Make next card slightly smaller
+                          child: ProfileCard(
+                            profile: _filteredProfiles[_currentIndex + 1],
+                            compatibilityScore: _compatibilityScores[_filteredProfiles[_currentIndex + 1].id] ?? 0.0,
+                          ),
+                        ),
+                      ),
+                    // Current card with transformations
+                    Transform.translate(
+                      offset: Offset(_dragX, _dragY),
+                      child: Transform.rotate(
+                        angle: _rotation,
+                        child: ProfileCard(
+                          profile: _filteredProfiles[_currentIndex],
+                          compatibilityScore: _compatibilityScores[_filteredProfiles[_currentIndex].id] ?? 0.0,
+                        ),
+                      ),
+                    ),
+                    // "LIKE" overlay
+                    if (_dragX > 0)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.all(50.0),
+                          child: Opacity(
+                            opacity: min(1.0, _dragX / 100), // Fade in based on drag
+                            child: Transform.rotate(
+                              angle: -pi / 12, // Slight rotation for "LIKE"
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.green, width: 5),
+                                  borderRadius: BorderRadius.circular(10), // Optional: add some border radius
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), // Optional: add padding inside the border
+                                child: Text(
+                                  'LIKE',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // "PASS" overlay
+                    if (_dragX < 0)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.all(50.0),
+                          child: Opacity(
+                            opacity: min(1.0, _dragX.abs() / 100), // Fade in based on drag
+                            child: Transform.rotate(
+                              angle: pi / 12, // Slight rotation for "PASS"
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.red, width: 5),
+                                  borderRadius: BorderRadius.circular(10), // Optional: add some border radius
+                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), // Optional: add padding inside the border
+                                child: Text(
+                                  'PASS',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               )
                   : Padding( // This is shown when _currentIndex >= _filteredProfiles.length
@@ -408,7 +604,7 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _onSwipeLeft,
+                    onPressed: () => _performSwipeAnimation(Alignment.bottomLeft, () => _onSwipeLeft()),
                     icon: Icon(Icons.close, size: 28),
                     label: Text('Pass', style: TextStyle(fontSize: 18)),
                     style: ElevatedButton.styleFrom(
@@ -421,7 +617,7 @@ class _SwipeViewWithMatchingState extends State<SwipeViewWithMatching> {
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: _onSwipeRight,
+                    onPressed: () => _performSwipeAnimation(Alignment.bottomRight, () => _onSwipeRight()),
                     icon: Icon(Icons.favorite, size: 28, color: Colors.pinkAccent),
                     label: Text('Like', style: TextStyle(fontSize: 18)),
                     style: ElevatedButton.styleFrom(

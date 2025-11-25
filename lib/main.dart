@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';// Keep if used by MainView or SignInVie
 import 'package:xenodate/services/xenoprofserv.dart';
 import 'package:xenodate/chatscreen2.dart'; // Keep if used by MainView or SignInView
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:xenodate/worldbuildingform.dart';
 
 // --- NEW IMPORTS FOR EMULATOR SETTINGS ---
 import 'package:cloud_functions/cloud_functions.dart';
@@ -167,6 +168,15 @@ class XDLogin extends StatelessWidget {
                 );
               },
               child: const Text('Chat with AI'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const WorldBuildingForm()),
+                );
+              },
+              child: const Text('World Building Form'),
             ),
           ],
         ),

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:xenodate/services/charserv.dart';
 import 'package:xenodate/services/xenoprofserv.dart';
 
+
 class AIChatScreen extends StatefulWidget {
   final String chatId;
   final String characterId;
@@ -193,27 +194,31 @@ class _AIChatScreenState extends State<AIChatScreen> {
       appBar: AppBar(
         title: Text('Chat with $appBarTitle', style: GoogleFonts.poppins()),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                final bool isUserMsg =
-                    message['role'] == "user";
+          Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final message = _messages[index];
+                    final bool isUserMsg =
+                        message['role'] == "user";
 
-                return _buildMessageBubble(
-                  isUserMsg,
-                  message['text'] as String? ?? '...', 
-                  (message['timestamp'] as Timestamp?)?.toDate() ??
-                      DateTime.now(),
-                  message['senderName'] as String,
-                );
-              },
-            ),
+                    return _buildMessageBubble(
+                      isUserMsg,
+                      message['text'] as String? ?? '...',
+                      (message['timestamp'] as Timestamp?)?.toDate() ??
+                          DateTime.now(),
+                      message['senderName'] as String,
+                    );
+                  },
+                ),
+              ),
+              _buildMessageInputArea(),
+            ],
           ),
-          _buildMessageInputArea(),
         ],
       ),
     );
@@ -236,11 +241,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
           crossAxisAlignment:
               isUserMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            if (!isUserMessage)
-              Text(
+            Text( // Always display sender name
                 senderDisplayName,
                 style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.bold, color: Colors.blue.shade800),
+                    fontWeight: FontWeight.bold, 
+                    color: isUserMessage ? Colors.white70 : Colors.blue.shade800),
               ),
             Text(messageText,
                 style: GoogleFonts.poppins(
@@ -271,6 +276,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
     return Container(
       padding: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration( // Added decoration for shading
+        color: Colors.grey.shade100, 
+        border: Border(top: BorderSide(color: Colors.grey.shade300)),
+      ),
       child: Row(
         children: [
           Expanded(
@@ -279,6 +288,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
               decoration: InputDecoration(
                 hintText: 'Message $hintName...',
                 hintStyle: GoogleFonts.poppins(),
+                border: InputBorder.none, // Remove default TextField border
               ),
               style: GoogleFonts.poppins(),
               onSubmitted: (_) => handleSend(),

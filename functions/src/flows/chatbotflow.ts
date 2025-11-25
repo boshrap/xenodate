@@ -1,10 +1,17 @@
-import {genkit, z} from "genkit";
-import {onCallGenkit} from "firebase-functions/https";
+import {genkit, z} from "genkit/beta";
+import {onCallGenkit} from "firebase-functions/v2/https";
 import {enableFirebaseTelemetry} from "@genkit-ai/firebase";
 import {googleAI} from "@genkit-ai/google-genai";
 import {defineSecret} from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import {getFirestore, FieldValue} from "firebase-admin/firestore";
+import {Document} from "genkit/retriever";
+import {chunk} from "llm-chunk";
+import {
+  devLocalIndexerRef,
+  devLocalVectorstore,
+  devLocalRetrieverRef,
+} from "@genkit-ai/dev-local-vectorstore";
 
 // Interface for data stored in a Xenoprofile document (for bot personas)
 interface XenoprofileFirestoreData {
@@ -73,11 +80,22 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
+const xenoMemoryIndexName = "xenoMemory";
+
 const ai = genkit({
   plugins: [
     googleAI(),
+    devLocalVectorstore([
+      {
+        indexName: xenoMemoryIndexName,
+        embedder: googleAI.embedder("gemini-embedding-001"),
+      },
+    ]),
   ],
 });
+
+const xenoMemoryIndexer = devLocalIndexerRef(xenoMemoryIndexName);
+const xenoMemoryRetriever = devLocalRetrieverRef(xenoMemoryIndexName);
 
 const ChatbotInputSchema = z.object({
   userId: z.string(),
@@ -92,30 +110,200 @@ const ChatbotOutputSchema = z.object({
   reply: z.string(),
 });
 
+const rollDice = ai.defineTool(
+  {
+    name: "rollDice",
+    description: "Rolls a six-sided die",
+    outputSchema: z.number().int().min(1).max(6),
+  },
+  async () => {
+    return Math.floor(Math.random() * 6) + 1;
+  }
+);
+
+interface ChunkingConfig {
+  minLength: number;
+  maxLength: number;
+  splitter: "sentence" | "paragraph";
+  overlap: number;
+  delimiters: string;
+}
+
+const chunkingConfig: ChunkingConfig = {
+  minLength: 100,
+  maxLength: 500,
+  splitter: "sentence",
+  overlap: 50,
+  delimiters: "",
+};
+
+const storeXenoMemory = ai.defineTool(
+  {
+    name: "storeXenoMemory",
+    description:
+      "Allows the xenoprofile bot to remember a specific detail about the " +
+      "user's character. Use this when the user reveals a strong interest, " +
+      "dislike, red flag, or a significant interaction.",
+    inputSchema: z.object({
+      xenoprofileId: z
+        .string()
+        .describe(
+          "The ID of the xenoprofile (usually 'self' from the bot's " +
+            "perspective)."
+        ),
+      characterId: z
+        .string()
+        .describe(
+          "The ID of the user's character that triggered this memory."
+        ),
+      memoryTopic: z
+        .enum(["interest", "dislike", "red_flag", "interaction"])
+        .describe("The category of the memory."),
+      memoryDetail: z
+        .string()
+        .describe(
+          "The specific detail to remember about the user's character."
+        ),
+    }),
+    outputSchema: z.object({
+      status: z.string(),
+      xenoprofileId: z.string(),
+      characterId: z.string(),
+      topic: z.string(),
+    }),
+  },
+  async (input) => {
+    const {xenoprofileId, characterId, memoryTopic, memoryDetail} = input;
+
+    try {
+      const chunks = await ai.run("chunk-memory-detail", async () =>
+        chunk(memoryDetail, chunkingConfig)
+      );
+
+      const documents = chunks.map((text) => {
+        return Document.fromText(text, {
+          xenoprofileId,
+          characterId,
+          memoryTopic,
+          timestamp: FieldValue.serverCimestamp(),
+        });
+      });
+
+      await ai.index({
+        indexer: xenoMemoryIndexer,
+        documents,
+      });
+
+      return {
+        status: "memory_saved",
+        xenoprofileId,
+        characterId,
+        topic: memoryTopic,
+      };
+    } catch (error) {
+      console.error(`Error storing xeno memory for ${xenoprofileId}:`, error);
+      throw new Error(`Failed to store memory: ${(error as Error).message}`);
+    }
+  }
+);
+
+const retrieveXenoMemories = ai.defineTool(
+  {
+    name: "retrieveXenoMemories",
+    description:
+      "Retrieves relevant memories about a user's character for a specific " +
+      "xenoprofile bot. Use this when you need to recall past interactions, " +
+      "interests, dislikes, or red flags related to the user.",
+    inputSchema: z.object({
+      query: z
+        .string()
+        .describe("The query or topic for which to retrieve memories."),
+      xenoprofileId: z.string().describe("The ID of the xenoprofile bot."),
+      characterId: z
+        .string()
+        .optional()
+        .describe(
+          "Optional: The ID of the user's character to filter memories by."
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .optional()
+        .describe(
+          "Optional: The maximum number of memories to retrieve (default is 5)."
+        ),
+    }),
+    outputSchema: z.object({
+      memories: z.array(z.string()),
+      xenoprofileId: z.string(),
+      characterId: z.string().optional(),
+    }),
+  },
+  async (input) => {
+    const {query, xenoprofileId, characterId, limit = 5} = input;
+
+    try {
+      const options: {
+        k: number;
+        filter?: {xenoprofileId: string; characterId?: string};
+      } = {k: limit};
+
+      options.filter = {xenoprofileId};
+      if (characterId) {
+        options.filter.characterId = characterId;
+      }
+
+      const relevantMemories = await ai.retrieve({
+        retriever: xenoMemoryRetriever,
+        query: query,
+        options: options,
+      });
+
+      const memoryDetails: string[] =
+      relevantMemories.map((doc) => doc.content as string);
+
+      return {memories: memoryDetails, xenoprofileId, characterId};
+    } catch (error) {
+      console.error(
+        `Error retrieving xeno memories for ${xenoprofileId}:`,
+        error
+      );
+      throw new Error(
+        `Failed to retrieve memories: ${(error as Error).message}`
+      );
+    }
+  }
+);
+
 /**
  * Fetches the persona details for the bot from a xenoprofile in Firestore.
  * @param {string} xenoprofileId The ID of the xenoprofile to fetch.
  */
 async function getBotPersona(
-  xenoprofileId: string,
+  xenoprofileId: string
 ): Promise<{name: string; instructions: string}> {
   const firestore = getFirestore();
 
   try {
-    const doc = await firestore.collection("xenoprofiles")
-      .doc(xenoprofileId).get();
+    const doc = await firestore
+      .collection("xenoprofiles")
+      .doc(xenoprofileId)
+      .get();
     if (!doc.exists) {
-      console.log(
-        `Xenoprofile with ID "${xenoprofileId}" not found.`
-      );
+      console.log(`Xenoprofile ID "${xenoprofileId}" not found.`);
       console.log("Using default bot persona.");
       return {name: "Default Bot", instructions: "Be helpful and concise."};
     }
 
     const data = doc.data() as XenoprofileFirestoreData | undefined;
 
-    if (data && typeof data.name === "string" &&
-        typeof data.biography === "string") {
+    if (
+      data &&
+      typeof data.name === "string" &&
+      typeof data.biography === "string"
+    ) {
       let instructions = `You are ${data.name} ${data.surname || ""}. `;
       instructions += `Your biography states: "${data.biography}". `;
       if (data.species) {
@@ -132,11 +320,10 @@ async function getBotPersona(
       }
 
       const interestsArray = data.interests ?
-        data.interests.split(",").map((i) => i.trim()) : [];
+        data.interests.split(",").map((i) => i.trim()) :
+        [];
       if (interestsArray.length > 0) {
-        instructions += `You are interested in ${
-          interestsArray.join(", ")
-        }. `;
+        instructions += `You are interested in ${interestsArray.join(", ")}. `;
       }
 
       if (data.likes) instructions += `You like ${data.likes}. `;
@@ -162,8 +349,8 @@ async function getBotPersona(
     } else {
       console.warn(
         `Data for xenoprofileId "${xenoprofileId}" is malformed or ` +
-        "missing required fields (name, biography). " +
-        "Using default bot persona."
+          "missing required fields (name, biography). " +
+          "Using default bot persona."
       );
       return {
         name: "Default Bot",
@@ -171,10 +358,7 @@ async function getBotPersona(
       };
     }
   } catch (error) {
-    console.error(
-      `Error fetching xenoprofile "${xenoprofileId}":`,
-      error
-    );
+    console.error(`Error fetching xenoprofile "${xenoprofileId}":`, error);
     return {
       name: "Default Bot",
       instructions: "Be helpful and concise.",
@@ -191,12 +375,13 @@ async function getBotPersona(
 async function getCharacterProfile(
   userId: string,
   characterId: string,
-  fallbackCharacterName: string,
+  fallbackCharacterName: string
 ): Promise<{name: string; instructions: string}> {
   const firestore = getFirestore();
 
   try {
-    const doc = await firestore.collection("users")
+    const doc = await firestore
+      .collection("users")
       .doc(userId)
       .collection("characters")
       .doc(characterId)
@@ -204,23 +389,26 @@ async function getCharacterProfile(
 
     if (!doc.exists) {
       console.log(
-        `User character with ID "${characterId}"
-        for user "${userId}" not found.`
+        `User character ID "${characterId}" for user "${userId}" not found.`
       );
       console.log("Using default user character persona.");
       // Fallback to the characterName provided in input if no persona found
-      return {name: fallbackCharacterName, instructions:
-          "The user is talking to you."};
+      return {
+        name: fallbackCharacterName,
+        instructions: "The user is talking to you.",
+      };
     }
 
     const data = doc.data() as UserCharacterFirestoreData | undefined;
 
     // Similar check as getBotPersona for essential fields
-    if (data && typeof data.name === "string" &&
-        typeof data.biography === "string") {
+    if (
+      data &&
+      typeof data.name === "string" &&
+      typeof data.biography === "string"
+    ) {
       let instructions =
-      `They are playing the role of
-      ${data.name} ${data.surname || ""}. `;
+        `They are playing the role of ${data.name} ${data.surname || ""}. `;
       instructions += `Their biography states: "${data.biography}". `;
       if (data.species) {
         instructions += `They are a ${data.species}`;
@@ -236,11 +424,12 @@ async function getCharacterProfile(
       }
 
       const interestsArray = data.interests ?
-        data.interests.split(",").map((i) => i.trim()) : [];
+        data.interests.split(",").map((i) => i.trim()) :
+        [];
       if (interestsArray.length > 0) {
-        instructions += `They are interested in ${
-          interestsArray.join(", ")
-        }. `;
+        instructions += `They are interested in ${interestsArray.join(
+          ", "
+        )}. `;
       }
 
       if (data.likes) instructions += `They like ${data.likes}. `;
@@ -263,8 +452,8 @@ async function getCharacterProfile(
     } else {
       console.warn(
         `Data for user character "${characterId}" is malformed or` +
-        "missing required fields (name, biography). " +
-        "Using default user character persona."
+          "missing required fields (name, biography). " +
+          "Using default user character persona."
       );
       return {
         name: fallbackCharacterName, // Fallback to the provided name
@@ -293,7 +482,12 @@ export const chatbotFlow = ai.defineFlow(
   async (input) => {
     console.log("Chatbot flow received input:", input);
     const {
-      xenoprofileId, userMessage, userId, chatId, characterId, characterName,
+      xenoprofileId,
+      userMessage,
+      userId,
+      chatId,
+      characterId,
+      characterName,
     } = input;
     const firestore = getFirestore();
 
@@ -312,19 +506,40 @@ export const chatbotFlow = ai.defineFlow(
 
     // --- Start of new addition for user character persona ---
     // You can now fetch the user's character persona using the new function.
-    const userPersona =
-    await getCharacterProfile(userId, characterId, characterName);
+    const userPersona = await getCharacterProfile(
+      userId,
+      characterId,
+      characterName
+    );
     console.log(`User's character persona fetched: ${userPersona.name}`);
     // --- End of new addition ---
 
-    const systemPrompt =
-    `You are ${botPersona.name}. ${botPersona.instructions}` +
-    `Here is information about the user you are interacting with:
-     ${userPersona.instructions}`;
+    // Retrieve relevant memories for the current conversation
+    const relevantMemories = await ai.retrieve({
+      retriever: xenoMemoryRetriever,
+      query: userMessage,
+      options: {k: 5}, // Retrieve top 5 relevant memories
+    });
+
+    let systemPrompt =
+      `You are ${botPersona.name}. ${botPersona.instructions}` +
+      "Here is information about the user you are interacting with:\n\n" +
+      `${userPersona.instructions}`;
+
+    if (relevantMemories.length > 0) {
+      const memoryText = relevantMemories.map((doc) => doc.content).join("");
+      systemPrompt +=
+        "\n\nHere are some relevant memories about the user and your " +
+        `interactions:\n${memoryText}`;
+    }
 
     const messages: GenkitMessage[] = [];
-    const messagesRef = firestore.collection("users").doc(userId)
-      .collection("chats").doc(chatId).collection("messages");
+    const messagesRef = firestore
+      .collection("users")
+      .doc(userId)
+      .collection("chats")
+      .doc(chatId)
+      .collection("messages");
 
     try {
       const snapshot = await messagesRef.orderBy("timestamp", "asc").get();
@@ -339,13 +554,11 @@ export const chatbotFlow = ai.defineFlow(
           });
         }
       });
-      console.log(
-        `Fetched ${messages.length} historical messages for chat ${chatId}.`
-      );
+      console.log(`Fetched ${messages.length} historical messages.`);
     } catch (error) {
       console.error(
-        `Error fetching chat history for userId "${userId}",
-         chatId "${chatId}":`,
+        `Error fetching chat history for userId "${userId}",\n
+                 chatId "${chatId}":`,
         error
       );
     }
@@ -374,7 +587,7 @@ export const chatbotFlow = ai.defineFlow(
           temperature: 0.7,
           maxOutputTokens: 155,
         },
-        returnToolRequests: false,
+        tools: [rollDice, storeXenoMemory, retrieveXenoMemories],
       });
 
       const botReply = response.text;
@@ -402,7 +615,6 @@ export const chatbotFlow = ai.defineFlow(
     }
   }
 );
-
 export const chatbot = onCallGenkit(
   {
     secrets: [apiKey],

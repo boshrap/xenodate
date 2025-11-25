@@ -9,6 +9,8 @@
 
 import {setGlobalOptions} from "firebase-functions";
 import {chatbot} from "./flows/chatbotflow";
+import {speciesBuilder, generateSpeciesDetail} from "./flows/xenogen";
+import {worldBuilder} from "./flows/worldgen";
 
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
@@ -30,4 +32,9 @@ setGlobalOptions({maxInstances: 10});
 //   response.send("Hello from Firebase!");
 // });
 
-export {chatbot};
+export {
+  chatbot,
+  worldBuilder,
+  speciesBuilder,
+  generateSpeciesDetail,
+};
