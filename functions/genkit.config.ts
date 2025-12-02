@@ -7,8 +7,7 @@ const googleApiKey = defineSecret("GOOGLE_GENAI_API_KEY");
 export default genkit({
   plugins: [
     googleAI({
-      apiKey: googleApiKey,
+      apiKey: googleApiKey.value(),
     }),
   ],
-  enableTracing: true,
 });

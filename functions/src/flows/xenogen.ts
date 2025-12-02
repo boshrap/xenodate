@@ -192,7 +192,7 @@ export const speciesBuilderFlow = ai.defineFlow(
       },
     });
 
-    return response.output;
+    return response.output ?? [];
   }
 );
 

@@ -122,6 +122,8 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
   String? _selectedLocation;
   String? _selectedCategory;
   String? _selectedSubcategory;
+  String? _selectedTag; // New tag state variable
+  final _titleController = TextEditingController(); // New title controller
   final _contentController = TextEditingController();
   bool _isLoading = false;
 
@@ -132,6 +134,9 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
     'Keplia', 'Matobu', 'Savaa', 'Novumera', 'Vespera', 'Essoveria',
     'Twileria', 'Toivoa', 'Lyria', 'Biszaria', 'Teagarden'
   ];
+  final List<String> _tags = const [
+    'General', 'Lore', 'Character', 'Plot', 'Event', 'NPC', 'Creature', 'Technology'
+  ]; // New tags list
   late final List<String> _categories;
   List<String> _currentSubcategories = [];
 
@@ -148,7 +153,8 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
 
   @override
   void dispose() {
-    // Clean up the controller when the widget is removed from the tree
+    // Clean up the controllers when the widget is removed from the tree
+    _titleController.dispose(); // Dispose the new title controller
     _contentController.dispose();
     super.dispose();
   }
@@ -182,9 +188,9 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
   }
 
   Future<void> _submitForm() async {
-  if (_selectedLocation == null || _selectedCategory == null) {
+  if (_selectedLocation == null || _selectedCategory == null || _titleController.text.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please select a location and category.')),
+      const SnackBar(content: Text('Please select a location and category, and enter a title.')),
     );
     return;
   }
@@ -195,19 +201,21 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
 
   try {
     // Get a reference to the callable function.
-    final worldBuilder =
-        FirebaseFunctions.instance.httpsCallable('worldBuilder');
+    final worldIndexer =
+        FirebaseFunctions.instance.httpsCallable('worldIndexer');
 
     // Create the request data payload.
     final data = {
       'location': _selectedLocation,
       'category': _selectedCategory,
       'subcategory': _selectedSubcategory,
+      'title': _titleController.text, // Add title to data payload
+      'tag': _selectedTag, // Add tag to data payload
       'content': _contentController.text,
     };
 
     // Call the function and await the result.
-    final result = await worldBuilder.call(data);
+    final result = await worldIndexer.call(data);
     final output = result.data; // The JSON array returned by the flow
 
     // For now, just print the result and show a success message.
@@ -250,6 +258,17 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // New: 0. Title Text Field
+                TextFormField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Title',
+                    hintText: 'Enter the title for this entry...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
                 // 1. Location Dropdown
                 DropdownButtonFormField<String>(
                   value: _selectedLocation,
@@ -292,12 +311,36 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
                 ),
                 const SizedBox(height: 24),
 
-                // 3. Subcategory Dropdown (Conditional)
+                // New: 3. Tag Dropdown
+                DropdownButtonFormField<String>(
+                  value: _selectedTag,
+                  hint: const Text('Select Tag (Optional)'),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedTag = newValue;
+                    });
+                  },
+                  items:
+                      _tags.map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    );
+                  }).toList(),
+                  decoration: const InputDecoration(
+                    labelText: 'Tag',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+
+                // 4. Subcategory Dropdown (Conditional)
                 // This widget is only built if there are subcategories for the selected category
                 if (_currentSubcategories.isNotEmpty)
                   DropdownButtonFormField<String>(
                     value: _selectedSubcategory,
-                    hint: const Text('Select Subcategory'),
+                    hint: const Text('Select Subcategory (Optional)'),
                     onChanged: (String? newValue) {
                       setState(() {
                         _selectedSubcategory = newValue;
@@ -320,7 +363,7 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
                 if (_currentSubcategories.isNotEmpty)
                   const SizedBox(height: 24),
 
-                // 4. Content Text Field
+                // 5. Content Text Field
                 TextFormField(
                   controller: _contentController,
                   decoration: const InputDecoration(
@@ -334,7 +377,7 @@ class _WorldBuildingFormState extends State<WorldBuildingForm> {
                 ),
                 const SizedBox(height: 32),
 
-                // 5. Submit Button
+                // 6. Submit Button
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),

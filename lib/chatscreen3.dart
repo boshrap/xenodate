@@ -122,7 +122,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     final userDisplayName = _characterName ?? "You";
 
     // Removed direct addition of user message to _messages
-    // await _saveMessageToFirestore(currentUserAuth.uid, text, "user");
+    await _saveMessageToFirestore(currentUserAuth.uid, text, "user");
 
 
     try {
@@ -158,6 +158,22 @@ class _AIChatScreenState extends State<AIChatScreen> {
     } catch (e) {
       print('Exception when calling Genkit flow: $e');
       _showErrorDialog("An error occurred while contacting the bot: $e");
+    }
+  }
+
+  Future<void> _saveMessageToFirestore(
+      String userId, String text, String role) async {
+    try {
+      await _getChatMessagesCollection(userId).add({
+        'role': role,
+        'text': text,
+        'timestamp': FieldValue.serverTimestamp(),
+        'senderId': userId,
+        'senderName': _characterName ?? "User",
+      });
+    } catch (e) {
+      print("Error saving message to Firestore: $e");
+      _showErrorDialog("Failed to send message: $e");
     }
   }
 
@@ -211,7 +227,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                       message['text'] as String? ?? '...',
                       (message['timestamp'] as Timestamp?)?.toDate() ??
                           DateTime.now(),
-                      message['senderName'] as String,
+                      (message['senderName'] as String?) ?? 'Unknown',
                     );
                   },
                 ),

@@ -1,1 +1,101 @@
-{"hosting":{"public":"public","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"**","destination":"/index.html"}]},"firestore":{"database":"(default)","location":"nam5","rules":"firestore.rules","indexes":"firestore.indexes.json"},"functions":[{"codebase":"default","predeploy":["npm --prefix \"$RESOURCE_DIR\" run lint","npm --prefix \"$RESOURCE_DIR\" run build"],"source":"functions","ignore":["node_modules",".git","firebase-debug.log","firebase-debug.*.log","*.local"]}],"storage":{"rules":"storage.rules"},"emulators":{"auth":{"port":9099},"functions":{"port":5001},"firestore":{"port":8081},"database":{"port":9000},"hosting":{"port":5000},"pubsub":{"port":8086},"storage":{"port":9199},"ui":{"enabled":true},"singleProjectMode":true,"apphosting":{"port":5002,"rootDirectory":"./"}},"apphosting":{"backendId":"xenodate","rootDir":"/","ignore":["node_modules",".git","firebase-debug.log","firebase-debug.*.log","functions"]},"flutter":{"platforms":{"android":{"default":{"projectId":"xenodate","appId":"1:795028656452:android:6c641187124340fca80711","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"xenodate","configurations":{"android":"1:795028656452:android:6c641187124340fca80711","ios":"1:795028656452:ios:eef2d7ca64b8f6caa80711","macos":"1:795028656452:ios:a22380e845acf770a80711","web":"1:795028656452:web:7a9bd7231e7cb501a80711","windows":"1:795028656452:web:0240868910f448c7a80711"}}}}}}
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "codebase": "default",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
+      "source": "functions",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        ".runtimeconfig.json"
+      ]
+    }
+  ],
+  "storage": {
+    "rules": "storage.rules",
+    "bucket": "xenodate.firebasestorage.app"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8081
+    },
+    "database": {
+      "port": 9000
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "pubsub": {
+      "port": 8086
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true
+    },
+    "singleProjectMode": true,
+    "apphosting": {
+      "port": 3400,
+      "rootDirectory": "functions"
+    }
+  },
+
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "xenodate",
+          "appId": "1:795028656452:android:6c641187124340fca80711",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "xenodate",
+          "configurations": {
+            "android": "1:795028656452:android:6c641187124340fca80711",
+            "ios": "1:795028656452:ios:eef2d7ca64b8f6caa80711",
+            "macos": "1:795028656452:ios:a22380e845acf770a80711",
+            "web": "1:795028656452:web:7a9bd7231e7cb501a80711",
+            "windows": "1:795028656452:web:0240868910f448c7a80711"
+          }
+        }
+      }
+    }
+  }
+}
