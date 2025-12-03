@@ -350,12 +350,24 @@ export const chatbotFlow = ai.defineFlow(
     // --- End of new addition ---
 
     // Retrieve relevant memories for the current conversation
-    // This retrieval still happens directly on the AI instance,
-    // not via the tool
     const relevantMemories = await ai.retrieve({
       retriever: xenoMemoryRetriever,
       query: userMessage,
-      options: {limit: 5}, // Retrieve top 5 relevant memories
+      options: {
+        limit: 5, // Retrieve top 5 relevant memories
+        where: [
+          {
+            field: "characterId",
+            op: "==",
+            value: characterId,
+          },
+          {
+            field: "xenoprofileId",
+            op: "==",
+            value: xenoprofileId,
+          },
+        ],
+      },
     });
 
     let systemPrompt =
@@ -372,13 +384,25 @@ export const chatbotFlow = ai.defineFlow(
     }
 
     systemPrompt +=
-      "\n\nTOOLS AVAILABLE:\n" +
+      `
+
+TOOLS AVAILABLE:
+` +
       "- use 'consultXenoWorldbook' if the user asks about the world, " +
-      "species, locations, or lore.\n" +
+      `species, locations, or lore.
+` +
       "- use 'storeXenoMemory' if the user tells you something important " +
-      "about themselves that you should remember for later.\n" +
+      "about themselves that you should remember for later. " +
+      "When using storeXenoMemory,";
+    "make sure to always provide the 'characterId' " +
+      `as '${characterId}' and the 'xenoprofileId' as '${xenoprofileId}'.
+` +
       "- use 'retrieveXenoMemory' if you need to recall details about the " +
-      "user that might not be in the immediate context.\n";
+      "user that might not be in the immediate context. " +
+      "When using retrieveXenoMemory,";
+    "make sure to always provide the 'characterId' " +
+      `as '${characterId}' and the 'xenoprofileId' as '${xenoprofileId}'.
+`;
 
     const messages: GenkitMessage[] = [];
     const messagesRef = firestore

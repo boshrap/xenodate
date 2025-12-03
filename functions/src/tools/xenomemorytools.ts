@@ -45,6 +45,10 @@ export function defineXenoMemoryTools(ai: ReturnType<typeof genkit>) {
         "or about the user.",
       inputSchema: z.object({
         text: z.string().describe("The text content to store as a memory."),
+        characterId: z.string().describe(
+          "The ID of the character associated with this memory."),
+        xenoprofileId: z.string().describe(
+          "The ID of the xenoprofile associated with this memory."),
       }),
       outputSchema: z.object({
         success: z.boolean().describe(
@@ -53,7 +57,7 @@ export function defineXenoMemoryTools(ai: ReturnType<typeof genkit>) {
           "Status message describing the result."),
       }),
     },
-    async ({text}) => {
+    async ({text, characterId, xenoprofileId}) => {
       try {
         // Embed the input text to create a vector.
         const embedding = (await ai.embed({
@@ -65,6 +69,8 @@ export function defineXenoMemoryTools(ai: ReturnType<typeof genkit>) {
         await firestore.collection(indexConfig.collection).add({
           [indexConfig.vectorField]: FieldValue.vector(embedding),
           [indexConfig.contentField]: text,
+          characterId: characterId,
+          xenoprofileId: xenoprofileId,
           timestamp: FieldValue.serverTimestamp(),
         });
         console.log(`Memory stored: "${text.substring(
@@ -102,6 +108,10 @@ export function defineXenoMemoryTools(ai: ReturnType<typeof genkit>) {
           "The query to search for relevant memories."),
         k: z.number().int().min(1).default(3).describe(
           "The number of top relevant memories to retrieve."),
+        characterId: z.string().describe(
+          "The ID of the character to filter memories by."),
+        xenoprofileId: z.string().describe(
+          "The ID of the xenoprofile to filter memories by."),
       }),
       outputSchema: z.array(z.object({
         content: z.string().describe(
@@ -112,12 +122,26 @@ export function defineXenoMemoryTools(ai: ReturnType<typeof genkit>) {
         "An array of retrieved memories with " +
         "their content and relevance score."),
     },
-    async ({query, k}) => {
+    async ({query, k, characterId, xenoprofileId}) => {
       try {
         const results = await ai.retrieve({
           retriever: xenoMemoriesRetriever,
           query: query,
-          options: {limit: k},
+          options: {
+            limit: k,
+            where: [
+              {
+                field: "characterId",
+                op: "==",
+                value: characterId,
+              },
+              {
+                field: "xenoprofileId",
+                op: "==",
+                value: xenoprofileId,
+              },
+            ],
+          },
         });
         console.log(`Retrieved ${results.length} memories for query:
             "${query.substring(0, Math.min(query.length, 50))}..."`);

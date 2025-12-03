@@ -31,12 +31,15 @@ const EMBEDDER_MODEL = "text-embedding-004";
 
 // Define inputSchema separately to allow for type inference
 const worldIndexerInputSchema = z.object({
-  location: z.string().describe("Location for world-building"),
+  scope: z.string().describe("Scope of the entry (location or species)"),
+  location: z.string().nullish().describe("Location for world-building"),
+  species: z.string().nullish().describe("Species for world-building"),
   category: z.string().describe("Category for world-building"),
   subcategory: z.string().nullish()
     .describe("Subcategory for world-building"),
   title: z.string().describe("Title for the world-building entry"),
-  tag: z.string().nullish().describe("Tag for the world-building entry"),
+  tags: z.array(z.string()).nullish().describe(
+    "Tags for the world-building entry"),
   content: z.string().describe("Content details for world-building"),
 });
 
@@ -93,7 +96,7 @@ export const xenoWorldbookIndexer = ai.defineIndexer(
   }
 );
 
-const worldIndexerFlow = ai.defineFlow(
+export const worldIndexerFlow = ai.defineFlow(
   {
     name: "worldIndexer",
     inputSchema: worldIndexerInputSchema, // Use the defined schema
@@ -105,25 +108,16 @@ const worldIndexerFlow = ai.defineFlow(
   },
   // Explicitly type the destructured parameters
   async ({
+    scope,
     location,
+    species,
     category,
     subcategory,
     title,
-    tag,
+    tags,
     content,
   }: WorldIndexerInput) => {
     try {
-      // Combine the input fields into a single text string for indexing
-      let combinedText = `Location: ${location}\nCategory: ${category}`;
-      if (subcategory) {
-        combinedText += `\nSubcategory: ${subcategory}`;
-      }
-      combinedText += `\nTitle: ${title}`;
-      if (tag) {
-        combinedText += `\nTag: ${tag}`;
-      }
-      combinedText += `\nContent: ${content}`;
-
       const chunkingConfig: {
         minLength: number;
         maxLength: number;
@@ -138,20 +132,22 @@ const worldIndexerFlow = ai.defineFlow(
         delimiters: "",
       };
 
-      // Divide the combined text into segments
+      // Divide the content into segments
       const chunks = await ai.run(
         "chunk-it",
-        async () => chunk(combinedText, chunkingConfig)
+        async () => chunk(content, chunkingConfig)
       );
 
       // Convert chunks of text into documents to store in the index.
       const documents = chunks.map((textChunk) => {
         return Document.fromText(textChunk, {
+          scope,
           location,
+          species,
           category,
           subcategory,
           title,
-          tag,
+          tags,
         });
       });
 
